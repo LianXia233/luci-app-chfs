@@ -136,16 +136,24 @@ jobs:
           set -e
           cd sdk
 
-          # luci-base 的 Makefile 里写死了 `include ../../luci.mk`
-          # 以及 `$(CP) ../../NOTICE ../../LICENSE`。
-          # 从 package/luci-base/ 出发，../../ 即 SDK 根目录，
-          # 因此 luci.mk / NOTICE / LICENSE 必须放在 SDK 根，而不是 feeds/ 下。
+          # luci.mk 放在两个位置，以同时满足两种 include 写法：
+          #   - $(TOPDIR)/luci.mk              <- 自身声明的惯用位置
+          #   - $(TOPDIR)/feeds/luci/luci.mk   <- 包 Makefile 里的引用路径
+          # luci-base 的 Makefile 写的是 include ../../luci.mk，
+          # 从 package/luci-base/ 出发即为 SDK 根，故根目录必须存在。
+          mkdir -p feeds/luci
           cp ../luci-src/luci.mk  ./luci.mk
+          cp ../luci-src/luci.mk  feeds/luci/luci.mk
           cp ../luci-src/LICENSE  ./LICENSE
           cp ../luci-src/NOTICE   ./NOTICE
+          cp ../luci-src/LICENSE  feeds/luci/LICENSE
+          cp ../luci-src/NOTICE   feeds/luci/NOTICE
 
+          # luci-base 放在 package/ 下：toplevel.mk 只扫描 SCAN_DIR=package
+          # （SCAN_DEPTH=5），feeds/ 下的包需要 scripts/feeds install 建软链才会被扫到。
           mkdir -p package/luci-base
           cp -r ../luci-src/modules/luci-base/. package/luci-base/
+          test -f package/luci-base/src/contrib/lemon.c
 
           # chfs：Makefile + extract-bin.sh + 预置二进制 bin/<arch>/chfs
           mkdir -p package/chfs/bin
@@ -159,9 +167,27 @@ jobs:
           cp -r ../luci-app-chfs/. package/luci-app-chfs/
 
           echo "--- SDK 根 ---";        ls luci.mk LICENSE NOTICE
-          echo "--- luci-base ---";     ls package/luci-base
+          echo "--- feeds/luci ---";    ls feeds/luci
+          echo "--- luci-base/src ---"; ls package/luci-base/src
           echo "--- chfs ---";          ls -R package/chfs | head -20
           echo "--- luci-app-chfs ---"; ls package/luci-app-chfs
+
+      # 必须在源码就位后、任何 make 目标之前生成 .config。
+      # SDK 解压后没有 .config，直接 make 会走 toplevel.mk 的 .config 规则并弹出
+      # menuconfig，在无 TTY 的 CI 中报错：
+      #   Error opening terminal: unknown.
+      #   make[2]: *** [include/toplevel.mk:137: menuconfig] Error 1
+      #   make[1]: *** [include/toplevel.mk:95: .config] Error 2
+      - name: 生成默认配置
+        run: |
+          set -e
+          cd sdk
+          make defconfig
+          test -f .config
+          echo "--- 目标平台 ---"
+          grep -E '^CONFIG_TARGET_(board|subtarget|arch)' .config || true
+          echo "--- 已识别相关包 ---"
+          grep -E '^CONFIG_PACKAGE_(luci-base|luci-app-chfs|chfs)=?' .config || echo "（未出现在 .config，host 构建不受影响）"
 
       - name: 构建 luci-base host 工具 (po2lmo / jsmin)
         run: |
