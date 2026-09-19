@@ -343,12 +343,26 @@ function service_status() {
 	// 注意: regexp() 返回的 regexp 对象没有 .exec() 方法, 用它会抛
 	// Reference error: left-hand side expression is not an array or object.
 	// 必须用全局 match(str, re) 函数, 返回 [ 整体匹配, 捕获组1, ... ] 或 null.
+	//
+	// 端口与协议都用 "(^|\n)" 锚定行首, 不用裸 port=:
+	// path=/mnt/port=share 这类取值会让裸匹配命中错误的位置.
+	// 同理 ssl.cert 也必须锚行首, 否则 html.notice 里出现该字样会误判为已启用 HTTPS.
 	if (st.ini_exists) {
 		let content = readfile(GEN_INI) ?? '';
-		let m = match(content, /port=([0-9]+)/);
+		let m = match(content, /(^|\n)port=([0-9]+)/);
 
-		if (m != null && m[1] != st.port)
-			st.port_mismatch = true;
+		if (m != null) {
+			// 当前真实生效的端口 —— 与 uci 的 st.port 可能不同 (改过但未重启).
+			// 前端按它拼 WebUI 地址, 才不会跳到一个没人监听的端口上.
+			st.ini_port = +m[2];
+
+			if ('' + st.ini_port != st.port)
+				st.port_mismatch = true;
+		}
+
+		// init 脚本仅在证书与私钥同时非空时才写出 ssl.cert, 故它的存在即等价于
+		// "当前生效的是 HTTPS". 与 probe_webdav 里的判定保持同一口径.
+		st.ini_https = (match(content, /(^|\n)ssl\.cert=/) != null);
 	}
 
 	return st;

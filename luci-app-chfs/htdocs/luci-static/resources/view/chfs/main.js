@@ -88,6 +88,12 @@ function statusBadge(st) {
 		var st = data[1] || {};
 		var m, s, o, self = this;
 
+		// 服务运行中时「当前端口」一律取真实生效值, 而不是 UCI 配置值 ——
+		// 改了端口但没重启时两者不同, 若各显示各的, 运行状态行与下面的 WebUI
+		// 地址会互相矛盾 (一个显示新配置, 一个显示实际监听)。不一致本身由
+		// 下方的告警条负责说明, 这里只保证"描述正在运行的服务"的字段取真实值。
+		var effPort = (st.running && st.ini_port) ? st.ini_port : (st.port || '8080');
+
 		m = new form.Map('chfs', _('chfs File Sharing'),
 			_('CuteHttpFileServer is an HTTP-based file sharing server. Use this page to configure the service; changes take effect after a restart.'));
 
@@ -105,7 +111,7 @@ function statusBadge(st) {
 				statusBadge(st),
 				st.pid ? E('span', { 'class': 'chfs-meta' }, _('PID') + ': ' + st.pid) : '',
 				st.mem_mb ? E('span', { 'class': 'chfs-meta' }, _('Memory usage') + ': ' + st.mem_mb + ' MB') : '',
-				st.port ? E('span', { 'class': 'chfs-meta' }, _('Port') + ': ' + st.port) : ''
+				st.port ? E('span', { 'class': 'chfs-meta' }, _('Port') + ': ' + effPort) : ''
 			]);
 		};
 
@@ -149,6 +155,67 @@ function statusBadge(st) {
 			if (!st.enabled)
 				wrap.appendChild(E('span', { 'class': 'chfs-hint' },
 					_('Note: the service is currently disabled. Save the configuration and tick "Enable service" first.')));
+
+			return wrap;
+		};
+
+		// ------------------------------------------------------------------
+		// WebUI 一键跳转
+		//
+		// 地址必须反映「当前真实生效」的协议与端口, 而不是 UCI 里的配置值:
+		// 改了 port 或证书但没重启服务时, 两者并不一致, 按配置值拼出来的地址
+		// 会打开一个没人监听的端口。真实值取自 /var/etc/chfs.ini
+		// (后端 service_status 解析出的 st.ini_port / st.ini_https);
+		// 仅在服务未运行时才退回配置值 —— 此时按钮本就禁用, 只作预览。
+		//
+		// 主机名用当前访问 LuCI 的 hostname, 而不是另配一份"设备地址"选项,
+		// 从根源上避免两处地址不一致。
+		// ------------------------------------------------------------------
+		o = s.option(form.DummyValue, '_webui', _('WebUI access'));
+		o.rawhtml = true;
+		o.cfgvalue = function() {
+			var running = !!st.running;
+			var cfg_cert = uci.get('chfs', 'main', 'ssl_cert') || '';
+			var cfg_key = uci.get('chfs', 'main', 'ssl_key') || '';
+
+			var scheme = running
+				? (st.ini_https ? 'https' : 'http')
+				: ((cfg_cert !== '' && cfg_key !== '') ? 'https' : 'http');
+
+			var host = window.location.hostname || '';
+			// IPv6 字面量需要方括号; 部分浏览器返回时已带括号, 避免重复添加
+			if (host.indexOf(':') >= 0 && host.charAt(0) !== '[')
+				host = '[' + host + ']';
+
+			// 端口直接用渲染期算好的 effPort, 与上方"运行状态"行同一来源,
+			// 避免两处各算一遍后取值不一致。
+			var url = scheme + '://' + host + ':' + effPort + '/';
+			var usable = running && !!st.binary_ok;
+			var wrap = E('div', { 'class': 'chfs-actions' });
+
+			// 与其他自建按钮同一约定: cbi-button-action + type=button。
+			// cbi-button-apply 会被 mint 主题接管成「保存并应用」, 点击只剩刷新;
+			// 不声明 type 时默认 submit, 会被外层 <form> 提交掉。
+			var open_btn = E('button', {
+				'type': 'button',
+				'class': 'btn cbi-button ' + (usable ? 'cbi-button-action' : 'cbi-button-neutral'),
+				'title': url,
+				'click': function(ev) {
+					ev.preventDefault();
+					window.open(url, '_blank', 'noopener');
+					return false;
+				}
+			}, _('Open WebUI'));
+
+			if (!usable)
+				open_btn.disabled = true;
+
+			wrap.appendChild(open_btn);
+			wrap.appendChild(E('span', { 'class': 'chfs-meta chfs-mono' }, url));
+
+			if (!usable)
+				wrap.appendChild(E('span', { 'class': 'chfs-hint' },
+					_('The service is not running; starting it will make the WebUI reachable at this address.')));
 
 			return wrap;
 		};

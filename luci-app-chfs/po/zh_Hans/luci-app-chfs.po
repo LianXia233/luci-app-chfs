@@ -606,3 +606,12 @@ msgstr "取消"
 
 msgid "Kernel management"
 msgstr "内核管理"
+
+msgid "WebUI access"
+msgstr "WebUI 访问"
+
+msgid "Open WebUI"
+msgstr "打开 WebUI"
+
+msgid "The service is not running; starting it will make the WebUI reachable at this address."
+msgstr "服务未运行; 启动后即可通过该地址访问 WebUI。"
