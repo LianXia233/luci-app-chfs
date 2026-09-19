@@ -99,14 +99,26 @@ po2lmo.c + lib/lmo.c + lib/plural_formula.o  -->  po2lmo
 make package/luci-base/host/compile V=s
 ```
 
-产物落在 `<sdk>/staging_dir/host/bin/`（该目录已在构建 PATH 中）。
+产物落在 **`<sdk>/staging_dir/hostpkg/bin/`**（注意不是 `staging_dir/host/bin/`）。
+原因是 `luci-base` 的 `PKG_BUILD_DEPENDS` 含 `luci-base/host`，SDK 会把该 host 包
+归入 `hostpkg` 前缀的 staging 目录。
+
+为兼容 `luci.mk` 中 `$(STAGING_DIR_HOST)/bin/po2lmo` 的查找路径，
+云编译在检测到只有 `hostpkg` 版本时会向 `staging_dir/host/bin/` 补一份软链：
+
+```sh
+mkdir -p staging_dir/host/bin
+ln -sf "$(pwd)/staging_dir/hostpkg/bin/po2lmo" staging_dir/host/bin/po2lmo
+ln -sf "$(pwd)/staging_dir/hostpkg/bin/jsmin"  staging_dir/host/bin/jsmin
+```
+
 云编译工作流正是采用这一方式（见 `.github/workflows/build.yml` 的「获取 luci feeds」
 与「构建 luci-base host 工具」两步）。
 
 > 注意：`luci-base/Makefile` 中写有 `include ../../luci.mk` 以及
 > `$(CP) ../../NOTICE ../../LICENSE`。从 `package/luci-base/` 出发，`../../`
 > 即 SDK 根目录，所以 `luci.mk`、`NOTICE`、`LICENSE` 必须放在 **SDK 根**，
-> 而不是 `feeds/luci/` 下。
+> 而不是 `feeds/luci/` 下。本仓库为保险起见两处都放。
 
 若 SDK 中已具备 `po2lmo`，打包时可选地关闭压缩以加快构建：
 
