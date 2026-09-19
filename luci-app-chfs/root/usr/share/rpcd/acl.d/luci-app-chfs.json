@@ -11,13 +11,19 @@
 					"read_ini",
 					"preview_ini",
 					"probe_listen",
-					"probe_webdav"
+					"probe_webdav",
+					"kernel_info",
+					"kernel_sources",
+					"kernel_pending",
+					"kernel_backups"
 				]
 			},
 			"file": {
 				"/etc/init.d/chfs": [ "read" ],
 				"/usr/bin/chfs": [ "read" ],
-				"/var/etc/chfs.ini": [ "read" ]
+				"/var/etc/chfs.ini": [ "read" ],
+				"/etc/luci-uploads/*": [ "read" ],
+				"/etc/chfs/kernel-backup/*": [ "read" ]
 			}
 		},
 		"write": {
@@ -32,12 +38,22 @@
 					"read_ini",
 					"preview_ini",
 					"probe_listen",
-					"probe_webdav"
+					"probe_webdav",
+					"kernel_info",
+					"kernel_sources",
+					"kernel_pending",
+					"kernel_backups",
+					"kernel_download",
+					"kernel_install",
+					"kernel_restore",
+					"kernel_discard"
 				]
 			},
 			"file": {
 				"/etc/init.d/chfs": [ "exec" ],
-				"/usr/bin/chfs": [ "exec" ]
+				"/usr/bin/chfs": [ "exec" ],
+				"/etc/luci-uploads/*": [ "write" ],
+				"/etc/chfs/kernel-backup/*": [ "write" ]
 			}
 		}
 	}

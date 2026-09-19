@@ -277,11 +277,39 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
 ```
 校验 (ELF 魔数 / e_machine 架构匹配 / 大小 100KB-64MB)
   -> 备份现有内核到 /etc/chfs/kernel-backup/chfs.<时间戳>
-  -> 停止服务
-  -> install -m0755 覆盖 /usr/bin/chfs
+  -> 停止服务, 并等待进程真正退出
+  -> chmod 0755 + mv -f 覆盖 /usr/bin/chfs
   -> 启动服务
-  -> 任一步失败则自动回滚到备份
+  -> 校验服务确实在运行; 若新内核起不来则从备份回滚
 ```
+
+整个「停服务 → 替换 → 启服务」由一段 shell 承载，并用
+`trap "$INIT start" EXIT INT TERM` 兜底：无论脚本正常结束、出错退出还是被信号打断，
+服务都会被重新拉起。这一点很关键 —— 早期实现用 `set -e`，一旦替换失败就会跳过启动步骤，
+把服务遗留在停止状态，比「安装失败」本身更严重。
+
+### 实现要点（踩过的坑）
+
+- **不要用 `install` 命令**：BusyBox 不含该 applet，设备上也没有独立的 `install`，
+  执行会得到退出码 127。改用 `chmod` + `mv`（`mv` 在同一分区是原子 inode 替换）。
+- **不要用 `set -e`**：失败即退出会跳过后续的启动步骤，把服务留在停止状态。
+- **`undefined` 不是 ucode 的合法标识符**：文件含 `'use strict'` 时，访问它会直接报
+  `access to undeclared variable undefined`。ucode 中未传参即为 `null`，判空只写
+  `=== null` 即可。
+- **ucode 的函数声明没有提升**：自定义函数必须定义在调用方之前，否则运行期报
+  `access to undeclared variable <函数名>`。
+- **`ucode -c` 只做语法检查**，通过不代表运行期无误。排查运行期异常可在方法注册处
+  注入 try/catch 打印 `e.message`。
+
+### 实测数据（ImmortalWrt SNAPSHOT / mediatek-filogic / aarch64_cortex-a53）
+
+| 操作 | 结果 |
+| --- | --- |
+| 一键下载（本仓库 Raw 源，8 MB） | 1.6 s 完成，sha256 与 `chfs/bin/SHA256SUMS` 一致 |
+| 安装内核 | 2.36 s，服务自动重启，HTTP 200、WebDAV 端点正常 |
+| 回滚内核 | 2.34 s，内核完全复原，备份文件保留 |
+| 越权路径 | `kernel_install` 传 `/tmp/evil` 被拒 |
+| 白名单外 URL | `kernel_download` 被拒 |
 
 ### 下载源与架构映射
 
@@ -387,3 +415,10 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
 - 设备上无 `curl` 且无 `uclient-fetch` 时，「一键下载」不可用，只能走手动上传。
 - 替换内核会短暂中断服务（停止 → 覆盖 → 启动）。备份保留在 `/etc/chfs/kernel-backup`，
   由用户自行清理，插件不做自动回收。
+- **共享根目录不存在时，chfs 会把 `可执行文件所在目录`（通常是 `/usr/bin`）当作共享路径**，
+  相当于把系统二进制目录暴露出去。实测：配置里写 `/mnt/sda1` 而该挂载点不存在时，
+  启动日志显示 `Shared path: /usr/bin`。
+  `write_config` 在保存时会对不存在的目录返回 warning，但**不会阻止保存** ——
+  请务必确认共享目录真实存在，尤其是使用外置存储时。
+- 内核管理依赖 `pidof`、`chmod`、`mv`、`cp`、`sleep`、`sha256sum`、`date`、`mkdir`
+  这些 BusyBox 自带命令。刻意避开了 `install`（BusyBox 不含该 applet）。

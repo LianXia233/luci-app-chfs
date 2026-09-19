@@ -26,7 +26,7 @@ const WEBDAV_OK_CODES = [ '200', '207', '301', '302', '401', '403', '405' ];
 // ---------------------------------------------------------------------------
 
 function validate_port(port) {
-	if (port === null || port === undefined || port === '')
+	if (port === null || port === '')
 		return { ok: false, msg: '端口不能为空' };
 
 	const s = '' + port;
@@ -723,7 +723,7 @@ function kernel_sources() {
 
 // 从白名单 URL 下载内核到 UPLOAD_DIR, 不直接覆盖运行中的内核
 function kernel_download(url) {
-	if (url === null || url === undefined || '' + url === '')
+	if (url === null || '' + url === '')
 		return { ok: false, msg: '下载地址不能为空' };
 
 	url = '' + url;
@@ -837,11 +837,65 @@ function kernel_pending() {
 	return out;
 }
 
-// 安装内核: 校验 -> 备份 -> 覆盖 -> 修权限
+// 替换内核文件, 并保证 chfs 服务在动作结束后一定处于运行状态。
 //
+// 设计说明 (两次实测教训换来的):
+//   1. 设备上**没有 install 命令** —— BusyBox 不含该 applet,
+//      `install -m0755` 会得到退出码 127。
+//   2. 不能依赖 `set -e`: 一旦中途失败就跳过后续的 start,
+//      把服务遗留在停止状态 —— 这比"安装失败"本身更严重。
+//   3. 也不能只靠 ucode 侧分步调用: ucode 的函数声明**顺序敏感**,
+//      前向调用会触发 `access to undeclared variable` (实测),
+//      异常直接冒泡出 rpcd, 同样让服务停在关闭状态。
+//   故把整个动作收进一段 shell, 并用 `trap ... EXIT` 兜底:
+//   无论脚本是正常结束、出错退出还是被信号打断, 服务都会被拉起。
+//
+// consume = true  -> 用 mv, 安装待安装文件 (消耗源文件)
+// consume = false -> 用 cp, 还原备份 (保留备份文件)
+//
+// 返回 { ok, running, out }
+function swap_kernel(from, to, consume) {
+	let mover = 'cp';
+	if (consume)
+		mover = 'mv';
+
+	let s = '';
+	s += 'INIT=' + INIT_SCRIPT + '; ';
+	s += 'FROM=' + from + '; ';
+	s += 'TO=' + to + '; ';
+	// 兜底: 任何退出路径都要把服务拉起来
+	s += 'trap "$INIT start >/dev/null 2>&1" EXIT INT TERM; ';
+	s += '$INIT stop >/dev/null 2>&1 || true; ';
+	// 等进程真正退出, 避免替换仍被映射的可执行文件
+	s += 'i=0; while [ $i -lt 10 ] && pidof chfs >/dev/null 2>&1; do sleep 1; i=$((i+1)); done; ';
+	// 替换。mv 在同一分区是原子的 inode 替换
+	s += 'if chmod 0755 "$FROM" && ' + mover + ' -f "$FROM" "$TO"; then echo SWAP_OK; ';
+	s += 'else echo SWAP_FAIL; fi';
+
+	let p = popen(s);
+	let out = trim('' + (p.read('all') ?? ''));
+	let code = p.close();
+
+	// trap 已在本段 shell 退出时拉起服务, 给它时间完成启动
+	popen('sleep 2').close();
+
+	// 独立查询服务状态。
+	// 这里刻意不调用其它自定义函数 —— ucode 的函数声明顺序敏感,
+	// 跨函数调用是前两次故障的根源。
+	let q = popen('pidof chfs 2>/dev/null');
+	let pid = trim('' + (q.read('all') ?? ''));
+	q.close();
+
+	return {
+		ok: (code == 0) && (match(out, /SWAP_OK/) != null),
+		running: pid !== '',
+		out: out
+	};
+}
+
 // src 只允许是 UPLOAD_DIR 下的文件, 不接受任意路径, 避免被利用覆盖系统文件。
 function kernel_install(src) {
-	if (src === null || src === undefined || '' + src === '')
+	if (src === null || '' + src === '')
 		return { ok: false, msg: '未指定内核文件' };
 
 	src = '' + src;
@@ -895,35 +949,33 @@ function kernel_install(src) {
 		}
 	}
 
-	// 安装步骤:
-	//   先停服务 (避免替换运行中的可执行文件), 再安装, 失败时回滚。
-	let script = '';
-	script += 'set -e; ';
-	script += INIT_SCRIPT + ' stop >/dev/null 2>&1 || true; ';
-	script += 'install -m0755 ' + src + ' ' + PROG + '; ';
-	script += 'rm -f ' + src + '; ';
-	script += INIT_SCRIPT + ' start >/dev/null 2>&1 || true; ';
+	// 替换内核。swap_kernel 内部用 shell trap 兜底, 保证服务一定被拉起。
+	let r = swap_kernel(src, PROG, true);
 
-	let p = popen(script + ' 2>&1');
-	let out = '' + (p.read('all') ?? '');
-	let code = p.close();
+	// 替换本身失败: PROG 未被改动, 无需回滚
+	if (!r.ok) {
+		return {
+			ok: false,
+			msg: '安装失败, 原内核未被改动' + (r.out !== '' ? ': ' + r.out : '') +
+			     (r.running ? '。服务已恢复运行'
+			                : '。服务未能启动, 请手动检查'),
+			backup: bak,
+			rolled_back: r.running
+		};
+	}
 
-	if (code != 0) {
-		// 回滚
+	// 替换成功但服务起不来: 用备份回滚
+	if (!r.running) {
 		let rolled = false;
-		if (bak !== '') {
-			let rp = popen('install -m0755 ' + bak + ' ' + PROG + ' 2>&1');
-			rp.read('all');
-			if (rp.close() == 0) {
-				rolled = true;
-				popen(INIT_SCRIPT + ' start >/dev/null 2>&1').close();
-			}
-		}
+
+		if (bak !== '')
+			rolled = swap_kernel(bak, PROG, false).running;
 
 		return {
 			ok: false,
-			msg: '安装失败 (退出码 ' + code + ')' + (trim(out) !== '' ? ': ' + trim(out) : '') +
-			     (rolled ? '。已回滚到备份内核' : ''),
+			msg: '新内核无法启动服务' + (rolled
+				? ', 已回滚到备份内核并恢复运行'
+				: (bak !== '' ? ', 回滚后服务仍未启动, 请手动检查' : ', 且无可用备份')),
 			backup: bak,
 			rolled_back: rolled
 		};
@@ -940,7 +992,7 @@ function kernel_install(src) {
 		sha256: file_sha256(PROG),
 		elf_machine: nm,
 		backup: bak,
-		output: trim(out)
+		output: r.out
 	};
 }
 
@@ -976,7 +1028,7 @@ function kernel_backups() {
 // 把备份文件还原为内核。
 // name 只接受 BACKUP_DIR 下的文件名, 用 basename 语义杜绝路径穿越。
 function kernel_restore(name) {
-	if (name === null || name === undefined || '' + name === '')
+	if (name === null || '' + name === '')
 		return { ok: false, msg: '未指定备份文件' };
 
 	name = '' + name;
@@ -993,19 +1045,14 @@ function kernel_restore(name) {
 	if (elf_machine(src) < 0)
 		return { ok: false, msg: '备份文件不是有效的 ELF 可执行文件' };
 
-	let before = stat(PROG);
-	let script = '';
-	script += 'set -e; ';
-	script += INIT_SCRIPT + ' stop >/dev/null 2>&1 || true; ';
-	script += 'install -m0755 ' + src + ' ' + PROG + '; ';
-	script += INIT_SCRIPT + ' start >/dev/null 2>&1 || true; ';
+	// 还原: consume=false 走 cp, 备份文件得以保留
+	let r = swap_kernel(src, PROG, false);
 
-	let p = popen(script + ' 2>&1');
-	let out = '' + (p.read('all') ?? '');
-	let code = p.close();
+	if (!r.ok)
+		return { ok: false, msg: '回滚失败' + (r.out !== '' ? ': ' + r.out : '') };
 
-	if (code != 0)
-		return { ok: false, msg: '回滚失败 (退出码 ' + code + ')' + (trim(out) !== '' ? ': ' + trim(out) : '') };
+	if (!r.running)
+		return { ok: false, msg: '内核已还原但服务未能启动, 请手动检查' };
 
 	let nst = stat(PROG);
 
@@ -1020,7 +1067,7 @@ function kernel_restore(name) {
 
 // 删除 UPLOAD_DIR 中的某个待安装文件
 function kernel_discard(name) {
-	if (name === null || name === undefined || '' + name === '')
+	if (name === null || '' + name === '')
 		return { ok: false, msg: '未指定文件' };
 
 	name = '' + name;

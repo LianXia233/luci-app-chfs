@@ -7,6 +7,85 @@
 
 ---
 
+## [1.0.0-r3] - 2026-09-19
+
+本次修复让内核管理功能真正可用。r2 引入的 8 个方法中有 4 个带参方法
+（download / install / restore / discard）一调用即失败；另外「保存配置」也存在同类问题。
+
+### 修复
+
+- **严格模式下访问 `undefined`，导致 4 个带参方法全部失败**
+  - 现象：`kernel_download` / `kernel_install` / `kernel_restore` / `kernel_discard`
+    调用后 rpcd 返回 `Unknown error`；而 4 个无参方法（info / sources / pending /
+    backups）以及既有的 `init_action` 均正常。
+  - 根因：文件第 5 行有 `'use strict';`，而 **ucode 没有 `undefined` 这个值** ——
+    它既不是关键字也不是内置变量，而是一个未声明的标识符，严格模式下访问即致命错误
+    `access to undeclared variable undefined`。
+  - 为什么只影响带参方法：这 4 个方法的参数校验首行都写作
+    `x === null || x === undefined || ...`。ubus 传入参数时 `x === null` 为假，
+    短路失效，进而求值 `x === undefined` 触发错误；不传参数时 `x === null` 为真
+    直接短路，所以看不出问题。
+  - 同一写法也存在于 `validate_port()`，因此 **保存配置**（`write_config` 传入非空端口）
+    同样会失败 —— 这是一个此前未被发现的潜伏缺陷，本次一并修掉。
+  - 修复：删除全部 `|| x === undefined` 子句。ucode 中未传参即为 `null`，
+    单判 `=== null` 语义等价且完备。
+  - 排查提示：`ucode -c` 编译检查会通过（它只做语法检查），运行时照样报错；
+    定位手段是在方法注册处注入 try/catch 打印 `e.message`。
+
+- **设备上没有 `install` 命令，安装内核失败（退出码 127）**
+  - 根因：安装逻辑用 `install -m0755 <src> <prog>`，但 BusyBox 不含该 applet，
+    设备上也没有独立的 `install`。
+  - 修复：改用 `chmod 0755` + `mv -f`。`mv` 在同一分区是原子的 inode 替换，
+    比 `cp` 覆盖运行中的可执行文件更安全，且只依赖 BusyBox 自带命令。
+
+- **安装失败后服务被遗留在停止状态（比安装失败本身更严重）**
+  - 根因有两层：
+    1. 安装脚本以 `set -e` 开头，`install` 失败即退出，后面的
+       `/etc/init.d/chfs start` 根本没执行；回滚分支同样用 `install`，一并失败，
+       于是 `rolled_back` 恒为 `false`。
+    2. 改为 ucode 分步调用后，又踩到 **ucode 函数声明顺序敏感**：把
+       `wait_chfs_down()` 定义在 `chfs_running()` 之前，前者调用后者时后者尚未声明，
+       报 `access to undeclared variable chfs_running`，异常冒泡出 rpcd，
+       服务同样停在关闭状态。
+  - 修复：把「停服务 → 等进程退出 → 替换 → 启服务」整体收进一段 shell，
+    用 `trap "$INIT start" EXIT INT TERM` 兜底 —— 无论脚本正常结束、出错退出
+    还是被信号打断，服务都会被拉起。ucode 侧只做参数校验与结果判定，
+    不再跨自定义函数调用。
+
+- **ACL 未覆盖新增方法**
+  - 补全 `kernel_*` 8 个方法的授权，并新增 `/etc/luci-uploads/*` 的 read/write
+    与 `/etc/chfs/kernel-backup/*` 的读写条目。
+  - `/etc/luci-uploads/*` 的 write 是前端上传（`cgi-upload`）的必需项 ——
+    cgi-io 会按 session 的 ACL 校验目标路径。
+
+### 变更
+
+- `luci.chfs` 新增 `swap_kernel(from, to, consume)` 辅助函数，统一承载
+  安装（`consume=true`，走 `mv`）与还原（`consume=false`，走 `cp`）。
+  它必须定义在调用方之前 —— ucode 的函数声明没有提升。
+
+### 实测验证（ImmortalWrt SNAPSHOT / mediatek-filogic / aarch64_cortex-a53）
+
+| 方法 | 输入 | 结果 |
+| --- | --- | --- |
+| `kernel_info` | — | 内核路径、大小、e_machine、sha256、架构匹配均正确 |
+| `kernel_sources` | — | 探测 6 个源，Raw 源返回 200，fetcher 识别为 curl |
+| `kernel_download` | 本仓库 Raw URL | 8 MB / 1.6 s，sha256 与 `chfs/bin/SHA256SUMS` 一致 |
+| `kernel_pending` | — | 正确列出待安装文件及其元数据 |
+| `kernel_install` | 待安装文件 | 2.36 s，`SWAP_OK`，服务自动重启 |
+| `kernel_backups` | — | 正确列出备份及 sha256 |
+| `kernel_restore` | 备份文件名 | 2.34 s，内核完全复原，备份文件保留 |
+| `kernel_discard` | 不存在的文件 | 返回业务错误「文件不存在」而非异常 |
+
+安全边界实测：
+
+- `kernel_install` 传 `/tmp/evil` → 拒绝，返回「非法的内核文件路径」
+- `kernel_download` 传白名单外 URL → 拒绝，返回「下载地址不在允许列表内」
+- 安装与回滚后均验证：HTTP 200、WebDAV 端点返回 401（存在且要求认证）、
+  `probe_listen` 确认 8080 监听正常
+
+---
+
 ## [1.0.0-r2] - 2026-09-19
 
 ### 新增
@@ -157,5 +236,6 @@
 - **1.1.x**：补充更多架构的预置二进制；增加共享目录在线预览。
 - **1.2.x**：支持多实例（不同端口启动多个 chfs 进程）。
 
+[1.0.0-r3]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
 [1.0.0-r2]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
 [1.0.0-r1]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
