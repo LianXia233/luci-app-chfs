@@ -7,6 +7,80 @@
 
 ---
 
+## [1.0.0-r4] - 2026-09-19
+
+本次补齐内核管理的界面入口（r2/r3 只做了后端方法，界面上无从操作），
+并修掉一个由主题按钮接管引发的缺陷 —— 它同时影响了主配置页已有的「启动」按钮。
+
+### 新增
+
+- **内核管理独立标签页**（`view/chfs/kernel.js`，菜单节点 `admin/nas/chfs/kernel`）
+  - 当前内核卡片：设备架构、内核分支、程序路径、大小、ELF `e_machine` 与架构匹配状态、
+    SHA256、预期版本；内核缺失时给出告警并提供入口。
+  - 一键下载卡片：点「检测下载源」后逐个探测 6 个候选源（HEAD 请求），列出可达性与
+    HTTP 状态码，仅可用源可点击下载。探测不放在 `load()` 中，避免 6 次网络探测拖慢首屏。
+  - 手动上传卡片：经 `/cgi-bin/cgi-upload` 上传到 `/etc/luci-uploads`，带进度百分比，
+    文件名做字符消毒。
+  - 待安装文件卡片：`非 ELF` 或架构不符的文件禁用安装按钮，避免无谓的服务重启。
+  - 备份卡片：列出历史备份，可一键回滚。
+  - 所有写操作均需二次确认；成功时刷新页面以拉取真实状态，**失败时不刷新**，
+    否则错误信息会被立即冲掉。
+- `po/zh_Hans` 增补 72 条界面文案翻译。
+
+### 修复
+
+- **主题接管 `cbi-button-apply`，导致自定义动作按钮失效**（影响面不止内核管理页）
+  - 现象：点击内核管理页的「安装」，确认框不出现，页面直接重新加载；
+    而同一页的「回滚」（`cbi-button-negative`）与「下载」（动态插入的 `cbi-button-apply`）
+    却都正常。
+  - 定位：mint 主题的 `/www/luci-static/resources/menu-mint.js` 会执行
+
+    ```js
+    form.querySelectorAll('button.cbi-button-save, input.cbi-button-save, ' +
+        'button.cbi-button-apply, input.cbi-button-apply').forEach((btn) => {
+        if (btn.getAttribute('data-mint-save-bound')) return;
+        btn.setAttribute('data-mint-save-bound', '1');
+        btn.addEventListener('click', (ev) => this.mintSave(ev));
+    });
+    ```
+
+    即把表单内所有 `cbi-button-apply` 按钮改写为「保存并应用」（ubus set+commit 后 reload）。
+    真机对照确认：安装按钮带 `data-mint-save-bound` 标记，回滚按钮没有，与现象完全对应。
+  - 为什么「下载」侥幸可用：它是点「检测下载源」之后才插入 DOM 的，错过了主题的那次扫描。
+    这属于偶然，不能依赖。
+  - **同一问题也存在于主配置页的「启动」按钮**：服务未运行时该按钮渲染为
+    `cbi-button-apply`，于是点击「启动」实际触发的是保存而非启动 —— 一个此前未被发现的既有缺陷。
+  - 修复：全部自建按钮改用 `cbi-button-action`，并显式声明 `type="button"`
+    （双保险：同时杜绝 LuCI 主题把视图包进 `<form>` 时默认 `type=submit` 带来的表单提交）。
+    覆盖 `kernel.js`（9 个）、`main.js`（1 个）、`status.js`（2 个）。
+
+### 变更
+
+- `Notes` 的 msgid 改为 `Safety notes`：`Notes` 是 LuCI 基础翻译表中的通用词（被译为「备注」），
+  与「注意事项」语义不符，改用独特 msgid 避免冲突。
+- `PKG_RELEASE` 由 1 提升到 4，与 CHANGELOG 的 `rN` 编号对齐。
+
+### 实测验证（ImmortalWrt SNAPSHOT / mediatek-filogic / aarch64_cortex-a53）
+
+全部通过浏览器 UI 操作，并同时以真实 LuCI 会话调用 `/ubus/` 读后端值交叉校验：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 一键下载（GitHub Raw 源） | 8388608 字节，sha256 `78ed31c1…`，与 `chfs/bin/SHA256SUMS` 一致 |
+| 手动上传 | 文件落到 `/etc/luci-uploads/chfs`，大小与源文件一致 |
+| 安装内核 | `/usr/bin/chfs` 由 8344802 字节换为 8388608 字节，sha256 `00b27ac0…` → `78ed31c1…`；服务自动恢复运行；安装前自动生成备份 |
+| 回滚备份 | 内核复原为 8344802 字节 / sha256 `00b27ac0…`，服务运行中，备份文件保留 |
+| 删除待安装文件 | 待安装区清空 |
+| 服务控制按钮 | 停止 → 启动 → 重启 全部生效，重启后 PID 变化 |
+| 配置保存 | 合法配置保存成功；非法端口被拒并返回「端口范围必须是 1-65535」；非法 IP 被拒 |
+| 标签页导航 | 四个标签页互通，当前页高亮正确 |
+| 页面控制台 | 无 JS 错误 |
+
+> 排查提示：判断按钮是否被主题接管，可在浏览器控制台执行
+> `document.querySelectorAll('[data-mint-save-bound]')`。
+> 判断页面是否被表单提交重载，可注入 `window.addEventListener('error', ...)` 后观察
+> `document` 上的标记是否随点击消失。
+
 ## [1.0.0-r3] - 2026-09-19
 
 本次修复让内核管理功能真正可用。r2 引入的 8 个方法中有 4 个带参方法

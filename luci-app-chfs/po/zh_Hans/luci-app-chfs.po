@@ -387,3 +387,220 @@ msgstr "服务状态"
 
 msgid "Service settings"
 msgstr "服务设置"
+
+msgid "bytes"
+msgstr "字节"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Matches"
+msgstr "匹配"
+
+msgid "Mismatch"
+msgstr "不匹配"
+
+msgid "chfs kernel management"
+msgstr "chfs 内核管理"
+
+msgid "Replace the chfs binary used by the service. Kernels can be downloaded from this project repository or uploaded manually; either way the file is placed in a pending area first and only written to the program path after you confirm, so a wrong or unreadable binary never silently replaces a working one."
+msgstr "替换服务使用的 chfs 可执行文件。内核既可从本仓库下载, 也可手动上传; 两种方式都会先保存到待安装区, 只有在你确认之后才会写入程序路径, 因此出错或无法运行的文件不会悄悄覆盖当前可用的内核。"
+
+msgid "Current kernel"
+msgstr "当前内核"
+
+msgid "The chfs binary was not found. Install the chfs package or use one of the options below."
+msgstr "未找到 chfs 可执行文件。请安装 chfs 包, 或使用下方的任一方式获取。"
+
+msgid "Device architecture"
+msgstr "设备架构"
+
+msgid "Kernel branch"
+msgstr "内核分支"
+
+msgid "Program path"
+msgstr "程序路径"
+
+msgid "File size"
+msgstr "文件大小"
+
+msgid "Architecture"
+msgstr "架构"
+
+msgid "SHA256"
+msgstr "SHA256"
+
+msgid "Expected version"
+msgstr "预期版本"
+
+msgid "Click \"Detect sources\" to check which download sources are reachable from this device. Detection issues a HEAD request to each candidate and does not download any payload."
+msgstr "点击「检测下载源」可检查本设备能访问哪些下载源。检测只对每个候选源发起 HEAD 请求, 不会下载任何内容。"
+
+msgid "Detect sources"
+msgstr "检测下载源"
+
+msgid "One-click download"
+msgstr "一键下载"
+
+msgid "Download a kernel built for this device from this project repository. The file is saved to the pending area and is not installed automatically."
+msgstr "从本仓库下载适配本设备的内核。文件会保存到待安装区, 不会自动安装。"
+
+msgid "No file selected"
+msgstr "未选择文件"
+
+msgid "Please choose a file first"
+msgstr "请先选择文件"
+
+msgid "Upload"
+msgstr "上传"
+
+msgid "Manual upload"
+msgstr "手动上传"
+
+msgid "Upload a chfs binary from your computer. This is the fallback when the device cannot reach any download source. The file is saved to the pending area and must be installed afterwards."
+msgstr "从本机上传 chfs 可执行文件。当设备无法访问任何下载源时可用此方式兜底。文件会保存到待安装区, 之后需手动安装。"
+
+msgid "Pending files"
+msgstr "待安装文件"
+
+msgid "Files in the pending area. Installing one will stop the service, replace the program file and start it again."
+msgstr "待安装区中的文件。安装某个文件会停止服务、替换程序文件, 然后重新启动服务。"
+
+msgid "No pending files."
+msgstr "暂无待安装文件。"
+
+msgid "Install this kernel?"
+msgstr "安装该内核?"
+
+msgid "The service will be stopped, %s will be replaced and the service will be started again. The current kernel is backed up first."
+msgstr "服务将被停止, %s 将被替换, 随后服务会重新启动。当前内核会先被备份。"
+
+msgid "Install"
+msgstr "安装"
+
+msgid "Installing kernel ..."
+msgstr "正在安装内核 ..."
+
+msgid "Kernel installed"
+msgstr "内核已安装"
+
+msgid "Delete this file?"
+msgstr "删除该文件?"
+
+msgid "The file will be removed from the pending area. This does not affect the running kernel."
+msgstr "文件将从待安装区移除, 不影响正在运行的内核。"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Deleting file ..."
+msgstr "正在删除文件 ..."
+
+msgid "File deleted"
+msgstr "文件已删除"
+
+msgid "Not an ELF file"
+msgstr "非 ELF 文件"
+
+msgid "File name"
+msgstr "文件名"
+
+msgid "Size"
+msgstr "大小"
+
+msgid "ELF architecture"
+msgstr "ELF 架构"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Backups"
+msgstr "备份"
+
+msgid "A backup of the program file is created automatically before every install. Rolling back replaces the running binary with the selected backup."
+msgstr "每次安装前会自动备份程序文件。回滚会用选定的备份替换正在运行的可执行文件。"
+
+msgid "No backups available."
+msgstr "暂无可用备份。"
+
+msgid "Roll back to this backup?"
+msgstr "回滚到该备份?"
+
+msgid "The running kernel will be replaced by this backup and the service will be restarted. The backup file itself is kept."
+msgstr "正在运行的内核将被该备份替换, 服务会重新启动。备份文件本身会保留。"
+
+msgid "Roll back"
+msgstr "回滚"
+
+msgid "Rolling back ..."
+msgstr "正在回滚 ..."
+
+msgid "Rolled back"
+msgstr "已回滚"
+
+msgid "Backup file"
+msgstr "备份文件"
+
+msgid "Safety notes"
+msgstr "安全提示"
+
+msgid "The kernel runs as root. Only install binaries from sources you trust; a binary that fails to start will leave the service down until it is rolled back."
+msgstr "内核以 root 身份运行。请只安装来自可信来源的可执行文件; 无法启动的文件会导致服务中断, 需回滚后才能恢复。"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Detecting download sources, please wait ..."
+msgstr "正在检测下载源, 请稍候 ..."
+
+msgid "Detection failed"
+msgstr "检测失败"
+
+msgid "Download this kernel?"
+msgstr "下载该内核?"
+
+msgid "The file will be downloaded to the pending area. The running kernel is not touched until you click Install."
+msgstr "文件将下载到待安装区。在点击「安装」之前, 不会改动正在运行的内核。"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Downloading kernel, this may take a while ..."
+msgstr "正在下载内核, 可能需要一段时间 ..."
+
+msgid "Download finished"
+msgstr "下载完成"
+
+msgid "Transport used"
+msgstr "使用的传输工具"
+
+msgid "Download source"
+msgstr "下载源"
+
+msgid "URL"
+msgstr "地址"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "HTTP code"
+msgstr "HTTP 状态码"
+
+msgid "Network error"
+msgstr "网络错误"
+
+msgid "Upload finished"
+msgstr "上传完成"
+
+msgid "Review the pending list below and click Install to apply it."
+msgstr "请在下方待安装列表中核对, 然后点击「安装」应用。"
+
+msgid "Upload failed"
+msgstr "上传失败"
+
+msgid "Confirm"
+msgstr "确定"
+
+msgid "Cancel"
+msgstr "取消"
+

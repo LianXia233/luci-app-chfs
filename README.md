@@ -14,8 +14,8 @@ OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer�
 - **状态页真实性**：所有状态数据均通过实际探测获取（`pgrep` 进程检测、`/proc/net/tcp` 端口
   监听检测、`curl PROPFIND` WebDAV 探测），非界面装饰。
 - **配置文件预览**：展示由 UCI 配置实际渲染出的 `chfs.ini` 内容。
-- **内核管理**：提供「一键下载」与「手动上传」两条内核替换路径，并支持安装前自动备份、
-  失败回滚。安装前会校验 ELF 魔数、`e_machine` 与设备架构是否匹配、文件大小是否合理。
+- **内核管理（独立标签页）**：提供「一键下载」与「手动上传」两条内核替换路径，并支持安装前
+  自动备份、失败回滚。安装前会校验 ELF 魔数、`e_machine` 与设备架构是否匹配、文件大小是否合理。
 
 ## 目录结构
 
@@ -40,6 +40,7 @@ OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer�
     │   ├── main.js                        # 主配置页
     │   ├── accounts.js                    # 账户与权限页
     │   ├── status.js                      # 服务状态页
+    │   ├── kernel.js                      # 内核管理页（下载 / 上传 / 安装 / 回滚）
     │   └── chfs.css                       # 样式（基于 LuCI CSS 变量）
     ├── po/zh_Hans/luci-app-chfs.po        # 简体中文翻译
     └── root/
@@ -288,6 +289,29 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
 服务都会被重新拉起。这一点很关键 —— 早期实现用 `set -e`，一旦替换失败就会跳过启动步骤，
 把服务遗留在停止状态，比「安装失败」本身更严重。
 
+### 界面
+
+内核管理是「网络存储 → chfs 文件共享」下的独立标签页，与服务设置、账户与权限、服务状态并列。
+页面按「现状 → 获取途径 → 待安装 → 备份」的顺序组织，所有数据都取自后端真实探测：
+
+| 卡片 | 内容与操作 |
+|---|---|
+| 当前内核 | 设备架构、内核分支、程序路径、文件大小、ELF `e_machine` 与架构匹配状态、SHA256、预期版本 |
+| 一键下载 | 点「检测下载源」后逐个探测 6 个候选源，列出可达性与 HTTP 状态码；仅可用源的下载按钮可点击 |
+| 手动上传 | 选择本地文件后经 `/cgi-bin/cgi-upload` 上传到待安装区，带进度百分比 |
+| 待安装文件 | 列出候选文件；`非 ELF` 或架构不符时禁用安装按钮，避免无谓的服务重启 |
+| 备份 | 列出历史备份（名称、大小、SHA256），可一键回滚 |
+
+几个刻意的取舍：
+
+- **源探测不放在 `load()` 里**。6 个候选源逐个发 HEAD 请求，在路由器上可能耗时十几秒，
+  放进 `load()` 会让首屏长时间白屏。改为由「检测下载源」按钮显式触发。
+- **安装与回滚都要二次确认**，确认框说明会发生什么（服务会停、哪个文件会被替换、备份是否保留）。
+- **成功才刷新页面，失败不刷新**。成功时刷新以拉取真实状态；失败时若也刷新，
+  错误信息会被立即冲掉，用户只看到页面闪一下。
+- **`非 ELF`/架构不符的文件直接禁用安装按钮**，而不是等后端拒绝 —— 后者会先停服务再报错，
+  白白造成一次服务中断。
+
 ### 实现要点（踩过的坑）
 
 - **不要用 `install` 命令**：BusyBox 不含该 applet，设备上也没有独立的 `install`，
@@ -300,6 +324,14 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
   `access to undeclared variable <函数名>`。
 - **`ucode -c` 只做语法检查**，通过不代表运行期无误。排查运行期异常可在方法注册处
   注入 try/catch 打印 `e.message`。
+- **自建按钮不要用 `cbi-button-apply` 类**：mint 主题的 `menu-mint.js` 会执行
+  `form.querySelectorAll('button.cbi-button-apply, input.cbi-button-apply, ...')`，
+  给命中的按钮打上 `data-mint-save-bound` 并接管点击事件（改写为 ubus set/commit 后 reload）。
+  自定义动作按钮若用了这个类，点击不会执行动作，只会刷新页面。
+  改用 `cbi-button-action`。
+- **`E('button')` 的默认 `type` 是 `submit`**：LuCI 主题会把整个视图包进一个
+  `<form method="post">`，未声明 `type` 的按钮点击会提交表单导致页面重载。
+  自建按钮一律显式写 `type="button"`。
 
 ### 实测数据（ImmortalWrt SNAPSHOT / mediatek-filogic / aarch64_cortex-a53）
 
@@ -413,6 +445,9 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
 - 内核管理仅校验「ELF 格式 + 架构匹配」，不做签名验证。信任锚点完全落在本仓库的可信性上，
   因此下载 URL 强制走白名单前缀。手动上传路径由用户自行保证文件来源可信。
 - 设备上无 `curl` 且无 `uclient-fetch` 时，「一键下载」不可用，只能走手动上传。
+- 界面的按钮样式类会影响功能：若主题接管了 `cbi-button-apply`（mint 即如此），
+  或用到了表单的默认提交行为，自定义动作按钮都会被截走。本插件自建按钮统一使用
+  `cbi-button-action` + `type="button"`，扩展界面时请遵循同一约定。
 - 替换内核会短暂中断服务（停止 → 覆盖 → 启动）。备份保留在 `/etc/chfs/kernel-backup`，
   由用户自行清理，插件不做自动回收。
 - **共享根目录不存在时，chfs 会把 `可执行文件所在目录`（通常是 `/usr/bin`）当作共享路径**，

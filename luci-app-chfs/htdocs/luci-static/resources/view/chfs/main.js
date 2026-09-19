@@ -125,6 +125,7 @@ function statusBadge(st) {
 
 			var mk = function(action, label, style) {
 				var btn = E('button', {
+					'type': 'button',
 					'class': 'btn cbi-button ' + (style || 'cbi-button-action'),
 					'click': function(ev) {
 						ev.preventDefault();
@@ -140,7 +141,7 @@ function statusBadge(st) {
 			};
 
 			// 运行中才允许停止与重启, 未运行时才允许启动
-			wrap.appendChild(mk('start', _('Start'), st.running ? 'cbi-button-neutral' : 'cbi-button-apply'));
+			wrap.appendChild(mk('start', _('Start'), st.running ? 'cbi-button-neutral' : 'cbi-button-action'));
 			wrap.appendChild(mk('stop', _('Stop'), 'cbi-button-reset'));
 			wrap.appendChild(mk('restart', _('Restart'), 'cbi-button-action'));
 

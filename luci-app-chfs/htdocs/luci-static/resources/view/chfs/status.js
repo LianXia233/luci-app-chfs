@@ -130,6 +130,7 @@ return view.extend({
 
 		// 复制地址按钮: 使用剪贴板 API, 不可用时降级为选中提示
 		var copyBtn = E('button', {
+			'type': 'button',
 			'class': 'btn cbi-button',
 			'click': function(ev) {
 				ev.preventDefault();
@@ -176,6 +177,7 @@ return view.extend({
 		// ------------------------------------------------------------------
 		container.appendChild(E('div', { 'class': 'chfs-actions' }, [
 			E('button', {
+				'type': 'button',
 				'class': 'btn cbi-button cbi-button-action',
 				'click': function(ev) {
 					ev.preventDefault();

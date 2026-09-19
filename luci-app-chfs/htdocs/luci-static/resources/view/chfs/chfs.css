@@ -166,6 +166,63 @@
 }
 
 /* --------------------------------------------------------------------------
+ * 数据表格 (内核管理页)
+ * -------------------------------------------------------------------------- */
+
+.chfs-table {
+	width: 100%;
+	margin-top: 10px;
+	border-collapse: collapse;
+	font-size: 94%;
+}
+
+.chfs-table th,
+.chfs-table td {
+	padding: 6px 8px;
+	text-align: left;
+	vertical-align: middle;
+	border-bottom: 1px solid var(--border-color-low, rgba(0, 0, 0, 0.08));
+	color: var(--text-color-high, inherit);
+}
+
+.chfs-table th {
+	font-size: 90%;
+	font-weight: 600;
+	color: var(--text-color-medium, rgba(0, 0, 0, 0.62));
+	white-space: nowrap;
+	border-bottom-width: 2px;
+}
+
+.chfs-table tr:last-child td {
+	border-bottom: none;
+}
+
+/* 操作列右对齐, 且按钮不换行 */
+.chfs-table .chfs-col-action {
+	text-align: right;
+	white-space: nowrap;
+}
+
+.chfs-table .chfs-col-action .chfs-actions {
+	margin-top: 0;
+	justify-content: flex-end;
+}
+
+/* URL 列允许换行, 避免长地址把表格撑破 */
+.chfs-table .chfs-url-cell {
+	max-width: 28em;
+	word-break: break-all;
+}
+
+/* --------------------------------------------------------------------------
+ * 文件选择与上传
+ * -------------------------------------------------------------------------- */
+
+.chfs-file-input {
+	max-width: 100%;
+}
+
+/* --------------------------------------------------------------------------
  * 窄屏适配
  * -------------------------------------------------------------------------- */
 
@@ -182,5 +239,11 @@
 
 	.chfs-kv-val {
 		display: block;
+	}
+
+	/* 窄屏下表格允许横向滚动, 保证按钮仍可点到 */
+	.chfs-table {
+		display: block;
+		overflow-x: auto;
 	}
 }
