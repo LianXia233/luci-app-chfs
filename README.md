@@ -1,499 +1,237 @@
+<div align="center">
+
 # luci-app-chfs
 
-OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer）图形化管理插件。
-前端采用 LuCI 现代架构（JS 视图 + ucode 后端），界面基于 LuCI 官方 CSS 变量适配明暗主题。
+**适用于 OpenWrt / ImmortalWrt 的 [chfs](http://iscute.cn/chfs) (CuteHttpFileServer) 现代图形化管理插件**
 
-## 功能特性
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-24.10.x-blue?logo=openwrt&logoColor=white)](#)
+[![ImmortalWrt](https://img.shields.io/badge/ImmortalWrt-SNAPSHOT-orange?logo=openwrt&logoColor=white)](#)
+[![LuCI Architecture](https://img.shields.io/badge/LuCI-JS%20%2B%20ucode-6f42c1)](#)
+[![Package Format](https://img.shields.io/badge/Package-apk%20%7C%20ipk-success)](#)
+[![Architecture](https://img.shields.io/badge/Arch-aarch64%20%7C%20x86__64-informational)](#)
 
-- **服务控制**：界面内启动 / 停止 / 重启服务，实时显示运行状态（进程号、内存占用、监听端口）。
-- **一键跳转 WebUI**：主配置页给出 chfs 网页界面地址并可直接在新标签页打开，
-  地址取服务**当前真实生效**的协议与端口，而非 UCI 里的配置值。
-- **完整参数配置**：监听端口、共享根目录（支持多目录）、运行身份、IP 白名单、匿名访问、
-  日志目录、HTTPS 证书、页面标题与公告、图片缩略图、目录下载策略、文件删除方式、会话超时。
-- **账户与权限**：多账户管理，支持按目录粒度配置权限（禁止访问 / 只读 / 读写 / 完全控制）。
-- **WebDAV 支持**：chfs 自 1.10 起默认启用 WebDAV，与 HTTP 共用端口。状态页提供真实的
-  `PROPFIND` 探测，并给出可直接复制的 WebDAV 地址。
-- **状态页真实性**：所有状态数据均通过实际探测获取（`pgrep` 进程检测、`/proc/net/tcp` 端口
-  监听检测、`curl PROPFIND` WebDAV 探测），非界面装饰。
-- **配置文件预览**：展示由 UCI 配置实际渲染出的 `chfs.ini` 内容。
-- **内核管理（独立标签页）**：提供「一键下载」与「手动上传」两条内核替换路径，并支持安装前
-  自动备份、失败回滚。安装前会校验 ELF 魔数、`e_machine` 与设备架构是否匹配、文件大小是否合理。
+*基于 LuCI 原生 CSS 变量设计，无缝自适应明暗主题；前后端采用现代架构（客户端 JS 渲染 + ucode 后端），杜绝假状态与多余开销。*
 
-## 目录结构
+---
 
-```
-.
-├── .github/workflows/
-│   ├── build.yml                          # 云编译：apk/ipk × arm64/amd64 四条目矩阵
-│   └── release.yml                        # 手动触发: 向已存在 tag 的 Release 追加内核二进制资产
-├── chfs/                                  # chfs 二进制包
-│   ├── Makefile                           # 预置二进制优先，缺失时回退上游下载
-│   ├── extract-bin.sh                     # 从上游 zip 中定位并规范化二进制
-│   ├── bin-manifest.txt                   # 预置二进制清单（架构、大小、sha256）
-│   └── bin/                               # 预置二进制（已入库，供云编译直接取用）
-│       ├── SHA256SUMS                     # 按架构的校验值清单
-│       ├── arm64/chfs                     #   OpenWrt ARCH: aarch64
-│       └── amd64/chfs                     #   OpenWrt ARCH: x86_64
-├── tools/fetch-chfs.py                    # 下载/更新预置二进制并生成清单
-├── README.md
-└── luci-app-chfs/                         # LuCI 应用包
-    ├── Makefile
-    ├── htdocs/luci-static/resources/view/chfs/
-    │   ├── main.js                        # 主配置页
-    │   ├── accounts.js                    # 账户与权限页
-    │   ├── status.js                      # 服务状态页
-    │   ├── kernel.js                      # 内核管理页（下载 / 上传 / 安装 / 回滚）
-    │   └── chfs.css                       # 样式（基于 LuCI CSS 变量）
-    ├── po/zh_Hans/luci-app-chfs.po        # 简体中文翻译
-    └── root/
-        ├── etc/config/chfs                # UCI 默认配置
-        ├── etc/init.d/chfs                # procd 服务脚本（UCI -> chfs.ini 渲染）
-        ├── etc/uci-defaults/99-luci-app-chfs
-        └── usr/share/
-            ├── luci/menu.d/luci-app-chfs.json   # 菜单（挂载于 网络存储）
-            ├── rpcd/acl.d/luci-app-chfs.json    # ACL 权限
-            └── rpcd/ucode/luci.chfs             # ubus 后端（对象 luci.chfs）
-```
+</div>
 
-## 编译
+## 📌 核心特性
 
-### 依赖
+- ⚡ **硬核真实状态探测**：拒绝虚假前端开关，全量状态基于底层探测（`pgrep` 运行检测、`/proc/net/tcp` 端口监听、`curl PROPFIND` WebDAV 端点探测）。
+- 🔗 **一键直达 WebUI**：直观展示 chfs 前端入口，自动识别并拼接**当前运行期真实生效**的协议与端口（支持 HTTPS/端口偏差告警）。
+- 📁 **精细化账户控制**：内置图形化账户管理，支持针对多路径粒度的权限划分（`禁止访问` / `只读` / `读写` / `完全控制`）。
+- 🌐 **原生 WebDAV 支持**：完整兼容 chfs 1.10+ 内置 WebDAV，状态页一键复制挂载链接。
+- 🛠️ **完整内核生命周期**：独立管理标签页，支持在线检测下载（多镜像代理白名单）与本地上传，提供 ELF 架构自动匹配、安装前自动备份与原子故障回滚。
 
-```sh
-# 将两个包放入 OpenWrt 源码树的 package/ 下
-cp -r chfs             <openwrt>/package/
-cp -r luci-app-chfs    <openwrt>/package/
-```
+---
 
-`chfs` 包的 `DEPENDS` 已声明支持的架构（mips/mipsel/mips64/mips64el/arm/aarch64/i386/x86_64）；
-其中仅 aarch64 与 x86_64 有预置二进制，其余架构走回退下载。
-`luci-app-chfs` 的 `LUCI_DEPENDS` 为：
+## ⚡ 快速安装
 
-```
-+chfs +rpcd +rpcd-mod-ucode +ucode +ucode-mod-fs +ucode-mod-uci
-```
+根据系统包管理器格式选择安装指令（菜单位于 **网络存储 (NAS) → chfs 文件共享**）：
 
-### 编译命令
-
-```sh
-# 1) 先构建 luci-base 的 host 工具（提供 po2lmo / jsmin）
-make package/luci-base/host/compile V=s
-
-# 2) 再编译两个包
-make package/chfs/compile V=s
-make package/luci-app-chfs/compile V=s
-```
-
-### 关于 host 工具
-
-LuCI 的 `luci.mk` 在打包 JS/CSS 与翻译时会调用 `jsmin`、`csstidy`、`po2lmo`。
-其中 **`po2lmo` 是必需项**（用于生成 `.lmo` 翻译文件），无法通过开关绕过。
-
-`po2lmo` 与 `jsmin` 都由 `luci-base` 的 host 部分构建。`luci-base/src/Makefile` 的
-依赖链是自包含的：
-
-```
-contrib/lemon.c  --cc-->  contrib/lemon
-lib/plural_formula.y  --lemon-->  lib/plural_formula.c/.h
-po2lmo.c + lib/lmo.c + lib/plural_formula.o  -->  po2lmo
-```
-
-即 **luci 仓库自带 `contrib/lemon.c`，会用普通 `cc` 就地编译 lemon**，
-不需要系统安装 lemon，也不需要对 `lib/lmo.c` 做任何改写。
-
-因此正确的做法是把 `luci` 仓库源码接入 SDK，然后：
-
-```sh
-make package/luci-base/host/compile V=s
-```
-
-产物落在 **`<sdk>/staging_dir/hostpkg/bin/`**（注意不是 `staging_dir/host/bin/`）。
-原因是 `luci-base` 的 `PKG_BUILD_DEPENDS` 含 `luci-base/host`，SDK 会把该 host 包
-归入 `hostpkg` 前缀的 staging 目录。
-
-为兼容 `luci.mk` 中 `$(STAGING_DIR_HOST)/bin/po2lmo` 的查找路径，
-云编译在检测到只有 `hostpkg` 版本时会向 `staging_dir/host/bin/` 补一份软链：
-
-```sh
-mkdir -p staging_dir/host/bin
-ln -sf "$(pwd)/staging_dir/hostpkg/bin/po2lmo" staging_dir/host/bin/po2lmo
-ln -sf "$(pwd)/staging_dir/hostpkg/bin/jsmin"  staging_dir/host/bin/jsmin
-```
-
-云编译工作流正是采用这一方式（见 `.github/workflows/build.yml` 的「获取 luci feeds」
-与「构建 luci-base host 工具」两步）。
-
-> 注意：`luci-base/Makefile` 中写有 `include ../../luci.mk` 以及
-> `$(CP) ../../NOTICE ../../LICENSE`。从 `package/luci-base/` 出发，`../../`
-> 即 SDK 根目录，所以 `luci.mk`、`NOTICE`、`LICENSE` 必须放在 **SDK 根**，
-> 而不是 `feeds/luci/` 下。本仓库为保险起见两处都放。
-
-若 SDK 中已具备 `po2lmo`，打包时可选地关闭压缩以加快构建：
-
-```sh
-make package/luci-app-chfs/compile V=s \
-    LUCI_MINIFY_JS=0 LUCI_MINIFY_CSS=0 LUCI_MINIFY_LUA=0 LUCI_MINIFY_UT=0
-```
-
-关闭后 `JsMin` / `CssTidy` / `SrcDiet` / `UtMin` 退化为打印提示，产物功能完全一致，仅不压缩源码。
-
-### chfs 二进制获取
-
-**本项目已把 arm64 与 amd64 两个架构的二进制预先入库**（`chfs/bin/<arch>/chfs`），
-云编译**不再依赖上游实时下载**。原因有两点：`iscute.cn` 的 HTTPS 证书已过期、
-站点可用性不可控，且实测下载经常中途断开。
-
-Makefile 的取用逻辑：
-
-- 若 `chfs/bin/$(CHFS_ARCH)/chfs` 存在且非空 → 直接安装，并把 `PKG_SOURCE_URL` 置空，构建系统不发起任何网络请求。
-- 否则 → 回退到上游下载（兼容未入库的架构）。
-
-> 关于跳过下载的正确写法：**不能设置 `PKG_SKIP_DOWNLOAD`**。
-> `include/package.mk` 第 14 行会无条件覆盖它
-> （`PKG_SKIP_DOWNLOAD=$(USE_SOURCE_DIR)$(USE_GIT_TREE)$(USE_GIT_SRC_CHECKOUT)`），
-> 而下载判定写在 `Build/DefaultTargets` 中：
-> ```make
-> $(if $(PKG_SKIP_DOWNLOAD),,$(if $(strip $(PKG_SOURCE_URL)),$(call Download,default)))
-> ```
-> 所以唯一可靠的方式是**把 `PKG_SOURCE_URL` 置空**。
-
-更新入库二进制：
-
-```sh
-python3 tools/fetch-chfs.py          # 下载 arm64/amd64 并刷新 bin-manifest.txt
-```
-
-上游下载地址形如：
-
-```
-http://iscute.cn/tar/chfs/<版本>/chfs-linux-<架构>-<版本>.zip
-```
-
-注意两点：
-
-1. **必须使用 HTTP**。`iscute.cn` 的 HTTPS 证书已过期，使用 `https://` 会导致下载失败
-   （`SSL certificate problem: certificate has expired`）。
-2. **架构名需要映射**，OpenWrt 的 `ARCH` 与上游命名不一致：
-
-   | OpenWrt  | chfs 上游 | 本项目预置 |
-   |----------|-----------|------------|
-   | aarch64  | arm64     | 是         |
-   | x86_64   | amd64     | 是         |
-   | mipsel   | mipsle    | 否         |
-   | mips64el | mips64le  | 否         |
-   | mips     | mips      | 否         |
-   | arm      | arm       | 否         |
-   | i386     | 386       | 否         |
-   | armeb    | arm       | 否         |
-
-压缩包内的二进制文件名形如 `chfs-linux-arm64-3.1`（无扩展名），由 `extract-bin.sh` 负责
-定位并安装为 `chfs-bin`，同时用魔数检测拒绝误取 Windows 可执行文件。
-
-## 配置说明
-
-UCI 配置文件为 `/etc/config/chfs`。init 脚本在服务启动时将其渲染为 `chfs.ini`
-（位于 `/var/etc/chfs.ini`），因为 chfs 的命令行只支持 `-file`、`-path`、`-port`、`-version`
-四个参数，账户权限、IP 过滤、日志等高级功能**只能通过配置文件下发**。
-
-### 主要选项
-
-| UCI 选项 | 说明 | 取值 |
-|---|---|---|
-| `enabled` | 开机自启与服务使能 | 0/1 |
-| `port` | HTTP/WebDAV 监听端口 | 1-65535 |
-| `path` | 共享根目录，多个用 `\|` 分隔 | 路径字符串 |
-| `run_as` | 运行身份 | `root` / `nobody` |
-| `anonymous` | 允许匿名访问（以 guest 身份） | 0/1 |
-| `allow` | IP 白名单，多个用 `\|` 分隔，留空不限制 | 地址或网段 |
-| `log_dir` | 操作日志目录，留空禁用 | 路径 |
-| `session_timeout` | 会话超时（分钟） | 1-1440 |
-| `folder_download` | 目录下载策略 | `disable` / `leaf` / `enable` |
-| `file_remove` | 文件删除方式 | `1` 永久 / `2` chfs 回收站 / `3` 系统回收站 |
-| `image_preview` | 图片缩略图 | 0/1 |
-| `html_title` / `html_notice` | 页面标题 / 公告 | 字符串 |
-| `ssl_cert` / `ssl_key` | HTTPS 证书与私钥路径（两者同时填写才启用 HTTPS） | 路径 |
-
-### 账户段
-
-```uci
-config account
-    option name 'admin'
-    option password 'yourpassword'
-    option rule_default 'w'
-    list rule_r '/public'
-    list rule_w '/upload'
-    list rule_d 'none'
-```
-
-权限取值：`none`（禁止访问）、`r`（只读）、`w`（读写）、`d`（完全控制，含删除）。
-
-`guest` 为内置访客账户，用于匿名访问，**不可删除**（界面已做删除保护）。
-
-## 后端接口
-
-ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
-
-### 服务与配置
-
-| 方法 | 说明 |
-|---|---|
-| `read_config` | 读取 UCI 配置（含账户列表） |
-| `write_config` | 写入 UCI 配置 |
-| `init_action` | 服务操作：start / stop / restart / reload / enable / disable |
-| `status` | 服务状态：运行中、PID、内存、监听端口、使能状态；运行中时附 `ini_port` / `ini_https`（真实生效的端口与是否 HTTPS）与 `port_mismatch`（改了配置但未重启） |
-| `read_ini` | 读取实际生成的 chfs.ini |
-| `preview_ini` | 预览待生成的 chfs.ini 内容（不落盘） |
-| `probe_listen` | 探测端口监听状态 |
-| `probe_webdav` | 通过 PROPFIND 探测 WebDAV 可用性 |
-
-### 内核管理
-
-| 方法 | 说明 |
-|---|---|
-| `kernel_info` | 当前内核路径、大小、ELF 机器类型、架构是否匹配、SHA256 |
-| `kernel_sources` | 探测候选下载源可用性 |
-| `kernel_pending` | 列出待安装的内核文件 |
-| `kernel_backups` | 列出已备份的内核 |
-| `kernel_download` | 按白名单前缀下载指定 URL 到待安装区 |
-| `kernel_install` | 校验后备份现有内核并安装 |
-| `kernel_restore` | 从备份回滚 |
-| `kernel_discard` | 丢弃待安装文件 |
-
-## WebUI 一键跳转
-
-主配置页的「服务控制」下方提供「WebUI 访问」一行：展示 chfs 网页界面的完整地址，
-并提供按钮在新标签页打开。服务未运行时按钮禁用，并提示先启动服务。
-
-地址按 `协议://主机:端口/` 拼出，三部分的来源都经过刻意选择：
-
-| 组成 | 来源 | 为什么不能用别的 |
-|---|---|---|
-| 协议 | 运行中取 `/var/etc/chfs.ini` 里是否存在 `ssl.cert`；未运行取 UCI 的 `ssl_cert` + `ssl_key` | 证书与私钥同时非空才启用 HTTPS，只看其中一个会把 `http` 拼成 `https` |
-| 端口 | 运行中取 ini 里的 `port=`（**真实监听端口**）；未运行取 UCI 的 `port` | 改了端口但没重启时两者不同，按配置值跳转会打开一个没人监听的端口 |
-| 主机 | `window.location.hostname`（当前访问 LuCI 的地址） | 另加一个「设备地址」配置项，等于制造两处可能不一致的来源 |
-
-后端的 `status` 为此新增两个字段：`ini_port` 与 `ini_https`，都从已生成的 ini 解析。
-解析一律用 `(^|\n)` 锚定行首，不用裸匹配 —— 共享根目录写成 `/mnt/port=9090`、
-或页面公告里出现 `ssl.cert=` 字样时，裸匹配会把它们误当成真实取值。
-
-同理，「运行状态」行显示的端口也改为运行中取真实生效值：否则同一张卡片里会出现
-「端口: 9090」与按钮 `:8080` 并存的自相矛盾，而**配置与生效值不一致本身由告警条负责说明**。
-
-## 内核管理
-
-随包入库的内核覆盖 arm64 与 amd64 两种架构。当出现以下情况时，需要替换设备上的内核：
-
-1. 目标架构未预置二进制（如 mipsle / armv7）；
-2. 上游发布了新版本，不希望等待插件重新打包；
-3. 随包二进制损坏或缺失。
-
-插件提供两条补充路径：
-
-- **一键下载**：从本仓库的 Release 资产下载对应架构的内核。信任锚点是本仓库且走 HTTPS，
-  相比从上游 `http://iscute.cn` 明文下载显著更安全。下载源经白名单前缀校验，
-  不接受任意 URL，避免沦为 SSRF 跳板。
-- **手动上传**：在网页上自行上传内核文件。
-
-无论哪条路径，文件都先落到 `/etc/luci-uploads` 待安装区，**不会直接覆盖运行中的内核**。
-点击安装后按以下流程执行：
-
-```
-校验 (ELF 魔数 / e_machine 架构匹配 / 大小 100KB-64MB)
-  -> 备份现有内核到 /etc/chfs/kernel-backup/chfs.<时间戳>
-  -> 停止服务, 并等待进程真正退出
-  -> chmod 0755 + mv -f 覆盖 /usr/bin/chfs
-  -> 启动服务
-  -> 校验服务确实在运行; 若新内核起不来则从备份回滚
-```
-
-整个「停服务 → 替换 → 启服务」由一段 shell 承载，并用
-`trap "$INIT start" EXIT INT TERM` 兜底：无论脚本正常结束、出错退出还是被信号打断，
-服务都会被重新拉起。这一点很关键 —— 早期实现用 `set -e`，一旦替换失败就会跳过启动步骤，
-把服务遗留在停止状态，比「安装失败」本身更严重。
-
-### 界面
-
-内核管理是「网络存储 → chfs 文件共享」下的独立标签页，与服务设置、账户与权限、服务状态并列。
-页面按「现状 → 获取途径 → 待安装 → 备份」的顺序组织，所有数据都取自后端真实探测：
-
-| 卡片 | 内容与操作 |
-|---|---|
-| 当前内核 | 设备架构、内核分支、程序路径、文件大小、ELF `e_machine` 与架构匹配状态、SHA256、预期版本 |
-| 一键下载 | 点「检测下载源」后逐个探测 6 个候选源，列出可达性与 HTTP 状态码；仅可用源的下载按钮可点击 |
-| 手动上传 | 选择本地文件后经 `/cgi-bin/cgi-upload` 上传到待安装区，带进度百分比 |
-| 待安装文件 | 列出候选文件；`非 ELF` 或架构不符时禁用安装按钮，避免无谓的服务重启 |
-| 备份 | 列出历史备份（名称、大小、SHA256），可一键回滚 |
-
-几个刻意的取舍：
-
-- **源探测不放在 `load()` 里**。6 个候选源逐个发 HEAD 请求，在路由器上可能耗时十几秒，
-  放进 `load()` 会让首屏长时间白屏。改为由「检测下载源」按钮显式触发。
-- **安装与回滚都要二次确认**，确认框说明会发生什么（服务会停、哪个文件会被替换、备份是否保留）。
-- **成功才刷新页面，失败不刷新**。成功时刷新以拉取真实状态；失败时若也刷新，
-  错误信息会被立即冲掉，用户只看到页面闪一下。
-- **`非 ELF`/架构不符的文件直接禁用安装按钮**，而不是等后端拒绝 —— 后者会先停服务再报错，
-  白白造成一次服务中断。
-
-### 实现要点（踩过的坑）
-
-- **不要用 `install` 命令**：BusyBox 不含该 applet，设备上也没有独立的 `install`，
-  执行会得到退出码 127。改用 `chmod` + `mv`（`mv` 在同一分区是原子 inode 替换）。
-- **不要用 `set -e`**：失败即退出会跳过后续的启动步骤，把服务留在停止状态。
-- **`undefined` 不是 ucode 的合法标识符**：文件含 `'use strict'` 时，访问它会直接报
-  `access to undeclared variable undefined`。ucode 中未传参即为 `null`，判空只写
-  `=== null` 即可。
-- **ucode 的函数声明没有提升**：自定义函数必须定义在调用方之前，否则运行期报
-  `access to undeclared variable <函数名>`。
-- **`ucode -c` 只做语法检查**，通过不代表运行期无误。排查运行期异常可在方法注册处
-  注入 try/catch 打印 `e.message`。
-- **自建按钮不要用 `cbi-button-apply` 类**：mint 主题的 `menu-mint.js` 会执行
-  `form.querySelectorAll('button.cbi-button-apply, input.cbi-button-apply, ...')`，
-  给命中的按钮打上 `data-mint-save-bound` 并接管点击事件（改写为 ubus set/commit 后 reload）。
-  自定义动作按钮若用了这个类，点击不会执行动作，只会刷新页面。
-  改用 `cbi-button-action`。
-- **`E('button')` 的默认 `type` 是 `submit`**：LuCI 主题会把整个视图包进一个
-  `<form method="post">`，未声明 `type` 的按钮点击会提交表单导致页面重载。
-  自建按钮一律显式写 `type="button"`。
-
-### 实测数据（ImmortalWrt SNAPSHOT / mediatek-filogic / aarch64_cortex-a53）
-
-| 操作 | 结果 |
-| --- | --- |
-| 一键下载（本仓库 Raw 源，8 MB） | 1.6 s 完成，sha256 与 `chfs/bin/SHA256SUMS` 一致 |
-| 安装内核 | 2.36 s，服务自动重启，HTTP 200、WebDAV 端点正常 |
-| 回滚内核 | 2.34 s，内核完全复原，备份文件保留 |
-| 越权路径 | `kernel_install` 传 `/tmp/evil` 被拒 |
-| 白名单外 URL | `kernel_download` 被拒 |
-| WebUI 跳转（运行中） | 按钮地址 `http://192.168.88.1:8080/`，点击后新标签页标题为「chfs 文件共享」并成功加载 `chfs.min.js`（HTTP 200） |
-| WebUI 跳转（改端口未重启） | UCI 改为 9090、服务仍监听 8080 时，按钮地址与运行状态行均为 8080，并显示不一致告警 |
-| WebUI 跳转（HTTPS） | ini 含行首 `ssl.cert=` 时地址变为 `https://192.168.88.1:8443/` |
-| WebUI 跳转（服务已停） | 按钮禁用并提示先启动服务 |
-| ini 解析反例 | 公告文本内含 `ssl.cert=`、共享根目录含 `port=9090` 时均未被误判 |
-
-以上结果已用云编译产物（GitHub Actions run #8 的 `luci-app-chfs-1.0.0-r4.apk`）在真机复核通过，
-四个标签页文案均为中文。
-
-### 下载源与架构映射
-
-内核二进制由 `.github/workflows/release.yml` 发布为 Release 资产。为避免与插件包的发布流程抢建同名 Release，该工作流改为**手动触发**：在 `build.yml` 因打 `v*` tag 而发布插件包之后，手动运行 `Release Chfs Kernel` 并指定同一 tag，向该 Release **追加**内核资产：
-
-| 设备 `uname -m` | 资产名 | ELF e_machine |
-|---|---|---|
-| `aarch64` | `chfs-linux-arm64-<ver>` | 183 |
-| `x86_64` | `chfs-linux-amd64-<ver>` | 62 |
-
-下载源候选（按顺序探测）：
-
-1. `https://github.com/LianXia233/luci-app-chfs/releases/download/<tag>/<资产>`
-2. `https://github.com/LianXia233/luci-app-chfs/releases/latest/download/<资产>`
-3. 上述两个地址经 `gh.acg2.mom` / `gh-proxy.com` / `ghfast.top` 镜像代理
-4. `https://raw.githubusercontent.com/LianXia233/luci-app-chfs/<branch>/chfs/bin/<arch>/chfs`
-   （及其 `gh.acg2.mom` 镜像）
-
-设备侧优先使用 `curl`（GitHub Release 资产会 302 跳转到 Azure Blob，需 `-L` 跟随重定向），
-`uclient-fetch` 作为兜底。注意：设备上的 `/usr/bin/wget` 通常是 `/bin/uclient-fetch` 的软链，
-**不支持 `-S` 选项**。
-
-## 安装
-
-### apk 系统（ImmortalWrt / OpenWrt SNAPSHOT）
+### 方式 A：apk 系统 (ImmortalWrt / OpenWrt SNAPSHOT)
 
 ```sh
 apk add --allow-untrusted ./chfs-3.1-r1.apk
 apk add --allow-untrusted ./luci-app-chfs-1.0.0-r1.apk
 apk add --allow-untrusted ./luci-i18n-chfs-zh-cn-*.apk
 
+# 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 /etc/init.d/rpcd reload
+
 ```
 
-### ipk 系统（OpenWrt 24.10.x）
+### 方式 B：ipk 系统 (OpenWrt 24.10.x)
 
 ```sh
 opkg install ./chfs-3.1-r1.ipk
 opkg install ./luci-app-chfs-1.0.0-r1.ipk
 opkg install ./luci-i18n-chfs-zh-cn-*.ipk
 
+# 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 /etc/init.d/rpcd reload
+
 ```
 
-安装后菜单位于 **网络存储（NAS） → chfs 文件共享**。
+---
 
-## 国际化
+## ⚙️ 配置参考
 
-源码中的 `_()` 使用**英文 msgid**，中文译文位于 `po/zh_Hans/luci-app-chfs.po`，
-编译时由 `po2lmo` 生成 `usr/lib/lua/luci/i18n/luci-app-chfs.zh-cn.lmo`。
+UCI 配置文件为 `/etc/config/chfs`，由 init 脚本在启动时自动渲染为 `/var/etc/chfs.ini`。
 
-新增界面文案时请同步更新 po 文件，否则该条在中文环境下会回退显示英文。
+### 核心参数映射
 
-> 为什么必须用英文 msgid：`po2lmo` 的 `print_msg()` 中有一条
-> `if (key_id != val_id)` 的判定。若把中文直接写成 `_('共享根目录')`，
-> msgid 与 msgstr 完全相同、哈希相同，该条会被静默跳过而不写入 `.lmo` 索引，
-> 导致翻译在中文环境下大面积失效（实测条数从 125 掉到 35）。
+| UCI 字段 | 类型 / 范围 | 默认值 | 作用说明 |
+| --- | --- | --- | --- |
+| `enabled` | `0` | `1` | `0` | 开机自启与服务总开关 |
+| `port` | `1 - 65535` | `8080` | HTTP / WebDAV 共享监听端口 |
+| `path` | 路径字符串 | - | 共享根目录，支持使用 `|` 分隔多个路径 |
+| `run_as` | `root` | `nobody` | `nobody` | 进程安全执行身份 |
+| `anonymous` | `0` | `1` | `1` | 允许 guest 访客身份匿名访问 |
+| `allow` | IP / CIDR | - | 客户端 IP 白名单（多项用 `|` 分隔，留空不限制） |
+| `folder_download` | `disable` | `leaf` | `enable` | `leaf` | 目录打包下载策略 |
+| `file_remove` | `1` | `2` | `3` | `1` | 删除策略：`1` 永久 / `2` chfs 回收站 / `3` 系统回收站 |
+| `image_preview` | `0` | `1` | `1` | 是否开启图片缩略图预加载 |
+| `ssl_cert` / `ssl_key` | 文件绝对路径 | - | HTTPS 证书与密钥（**两者皆填写**时生效） |
+| `log_dir` | 目录路径 | - | 操作日志存储目录（留空禁用） |
+| `session_timeout` | `1 - 1440` (分钟) | - | 会话有效时间 |
 
-## 构建产物
+### 账户段配置范例
 
-云编译一次性产出 **两种包格式 × 两个架构**，共 4 组 artifact：
+```uci
+config account
+    option name 'admin'
+    option password 'yourpassword'
+    option rule_default 'w'       # 默认权限: none / r / w / d
+    list rule_r '/public'         # /public 设为只读
+    list rule_w '/upload'         # /upload 允许读写
+    list rule_d 'none'            # 禁用删除权限
 
-| artifact 名称 | 包格式 | SDK | 目标平台 |
-|---|---|---|---|
-| `packages-apk-aarch64_cortex-a53` | apk | ImmortalWrt SNAPSHOT | mediatek/filogic |
-| `packages-apk-x86_64` | apk | ImmortalWrt SNAPSHOT | x86/64 |
-| `packages-ipk-aarch64_cortex-a53` | ipk | OpenWrt 24.10.5 | mediatek/filogic |
-| `packages-ipk-x86_64` | ipk | OpenWrt 24.10.5 | x86/64 |
+```
 
-每组包含三个包（以 apk 为例）：
+> [!NOTE]
+> `guest` 为内置只读访客账户，用于匿名访问场景，界面已做安全保护**不可删除**。
 
-| 包 | 说明 |
-|---|---|
-| `chfs-3.1-r1.apk` | chfs 二进制本体 |
-| `luci-app-chfs-1.0.0-r1.apk` | LuCI 应用（配置页、账户页、状态页、init 脚本、ucode 后端） |
-| `luci-i18n-chfs-zh-cn-*.apk` | 简体中文翻译 |
+---
 
-### 包格式与 SDK 的对应关系
+## 🧭 系统设计与运行机制
 
-| 发行版 | 包格式 | 包管理器 | 索引 |
-|---|---|---|---|
-| OpenWrt 24.10.x | ipk | opkg | `Packages.gz` |
-| OpenWrt SNAPSHOT / ImmortalWrt SNAPSHOT | apk | apk-tools 3.x | `packages.adb` |
+### 1. WebUI 动态跳转解析逻辑
 
-ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境一致。
+主界面的跳转链接根据当前运行事实动态组装（`协议://主机:端口/`），彻底杜绝脏配置造成的 404：
 
-### 触发云编译
+```
+[LuCI 前端: hostname]  ──┐
+[ini 解析: ssl.cert]   ──┼──> [ 真实生效 WebUI 链接 ] ──> 新标签页一键跳转
+[ini 解析: port=]      ──┘
 
-- 推送到 `main` 分支 或 发起 PR：自动构建全部 4 组，产物上传为 artifact。
-- 打 `v*` tag（例如 `v1.0.0`）：`build.yml` 构建完成后自动创建 Release 并附带全部插件包
-  （`chfs` / `luci-app-chfs` / `luci-i18n-chfs-zh-cn` 的 apk + ipk）。
-- 在上述 Release 创建成功后，手动运行 `Release Chfs Kernel` 工作流、指定同一 tag，
-  由 `release.yml` 向该 Release **追加**内核二进制资产（`chfs-linux-arm64-3.1` /
-  `chfs-linux-amd64-3.1` / `SHA256SUMS`），供设备侧「一键下载」使用。
+```
 
-  > 为什么内核发布要分两步、且 `release.yml` 改为手动：两个工作流若都在 `v*` tag
-  > 推送时自动运行，会并发抢建同名 Release，后到的一方会收到 GitHub 的
-  > 422 "Release already exists" 而失败。让 `build.yml` 独占 tag 触发的发布、
-  > `release.yml` 在其后手动追加，即可彻底避免该竞态。
+* **协议探测**：运行中检测 `/var/etc/chfs.ini` 行首 `ssl.cert=` 是否存在；未运行时取 UCI 配置中的双证书项。
+* **端口校准**：运行中直接抓取 ini 内的 `port=`，若用户修改了端口但未重载服务，前端将呈现当前**实际监听端口**并附带**不一致告警提示**。
+* **边界防误判**：正则表达式强制使用 `(^|\n)` 锚定行首，避免页面公告或目录名称包含 `ssl.cert=` 时触发误判。
 
-## 已知限制
+### 2. 内核安全替换流程
 
-- chfs 上游不提供源码，仅分发预编译二进制，因此无法在目标平台上自行交叉编译；
-  支持的架构受上游发布范围限制。
-- WebDAV 无独立开关，始终与 HTTP 共享端口与访问规则。
-- 上游 HTTPS 证书过期，`PKG_SOURCE_URL` 使用 HTTP 协议。
-- 内核管理仅校验「ELF 格式 + 架构匹配」，不做签名验证。信任锚点完全落在本仓库的可信性上，
-  因此下载 URL 强制走白名单前缀。手动上传路径由用户自行保证文件来源可信。
-- 设备上无 `curl` 且无 `uclient-fetch` 时，「一键下载」不可用，只能走手动上传。
-- 界面的按钮样式类会影响功能：若主题接管了 `cbi-button-apply`（mint 即如此），
-  或用到了表单的默认提交行为，自定义动作按钮都会被截走。本插件自建按钮统一使用
-  `cbi-button-action` + `type="button"`，扩展界面时请遵循同一约定。
-- 替换内核会短暂中断服务（停止 → 覆盖 → 启动）。备份保留在 `/etc/chfs/kernel-backup`，
-  由用户自行清理，插件不做自动回收；**备份也不按内容去重、没有数量上限**，
-  同一份内核被反复安装会生成多份字节完全相同的备份（实测连续 4 次安装累积 4 份
-  sha256 相同的 7.96 MB 文件，约占 31.9 MB），请定期手工清理旧备份。
-- **共享根目录不存在时，chfs 会把 `可执行文件所在目录`（通常是 `/usr/bin`）当作共享路径**，
-  相当于把系统二进制目录暴露出去。实测：配置里写 `/mnt/sda1` 而该挂载点不存在时，
-  启动日志显示 `Shared path: /usr/bin`。
-  `write_config` 在保存时会对不存在的目录返回 warning，但**不会阻止保存** ——
-  请务必确认共享目录真实存在，尤其是使用外置存储时。
-- 内核管理依赖 `pidof`、`chmod`、`mv`、`cp`、`sleep`、`sha256sum`、`date`、`mkdir`
-  这些 BusyBox 自带命令。刻意避开了 `install`（BusyBox 不含该 applet）。
+独立标签页支持一键更新或手动上传内核，整体采用**事务式安全升级策略**：
+
+```mermaid
+graph TD
+    A[选择下载源 / 上传文件] --> B[写入 /etc/luci-uploads]
+    B --> C{静态安全检查}
+    C -- 失败: 架构/魔数不匹配 --> D[中断并提示, 不影响现有服务]
+    C -- 成功 --> E[自动备份至 /etc/chfs/kernel-backup/]
+    E --> F[安全停止现有服务]
+    F --> G[原子替换覆盖 /usr/bin/chfs]
+    G --> H[启动新内核服务]
+    H --> I{健康探测}
+    I -- 成功 (HTTP 200) --> J[刷新页面展示新版本]
+    I -- 失败 --> K[触发 trap 机制, 从备份瞬间回滚]
+
+```
+
+---
+
+## 🏗️ 编译与源码架构
+
+```
+.
+├── .github/workflows/
+│   ├── build.yml                         # 云编译：apk/ipk × arm64/amd64 四矩阵构建
+│   └── release.yml                       # 手动工作流：向已有 Release 追加内核二进制资产
+├── chfs/                                 # chfs 二进制包封装
+│   ├── Makefile                          # 构建逻辑（优先预置，回退上游）
+│   ├── extract-bin.sh                    # 二进制解压与规范化清洗
+│   ├── bin-manifest.txt                  # 架构、体积与 sha256 校验清单
+│   └── bin/                              # 预置二进制库（跳过外部下载）
+│       ├── SHA256SUMS                    # 校验值列表
+│       ├── arm64/chfs                    # 对应 aarch64
+│       └── amd64/chfs                    # 对应 x86_64
+├── tools/fetch-chfs.py                   # 自动化抓取上游二进制并同步清单
+└── luci-app-chfs/                        # LuCI 现代架构应用源码
+    ├── Makefile
+    ├── htdocs/luci-static/resources/view/chfs/
+    │   ├── main.js                       # 主配置视图
+    │   ├── accounts.js                   # 账户管理视图
+    │   ├── status.js                     # 运行状态视图
+    │   ├── kernel.js                     # 内核升级与回滚管理
+    │   └── chfs.css                      # 适配主题变量的自定义样式
+    ├── po/zh_Hans/luci-app-chfs.po        # 简体中文本地化字典
+    └── root/
+        ├── etc/config/chfs               # UCI 默认定义
+        ├── etc/init.d/chfs               # procd 服务脚本 (UCI -> ini 渲染)
+        ├── etc/uci-defaults/99-luci-app-chfs
+        └── usr/share/
+            ├── luci/menu.d/              # 菜单挂载 (网络存储)
+            ├── rpcd/acl.d/               # ACL 鉴权规则
+            └── rpcd/ucode/luci.chfs      # ucode 后端 (提供 16 个 ubus RPC 接口)
+
+```
+
+### 本地编译指令
+
+```sh
+# 1. 复制源码包至 OpenWrt SDK
+cp -r chfs <openwrt>/package/
+cp -r luci-app-chfs <openwrt>/package/
+
+# 2. 先构建 luci-base host 工具 (生成必须的 po2lmo 与 jsmin)
+make package/luci-base/host/compile V=s
+
+# 3. 编译应用包 (可配置关闭压缩提速)
+make package/chfs/compile V=s
+make package/luci-app-chfs/compile V=s \
+    LUCI_MINIFY_JS=0 LUCI_MINIFY_CSS=0
+
+```
+
+* **关于 `po2lmo**`：`luci-base/src/Makefile` 内嵌 `contrib/lemon.c`，无需宿主机环境预装 lemon 即可编译。产物存放于 `staging_dir/hostpkg/bin/`。云编译环境会自动向 `staging_dir/host/bin/` 创建软链接以兼容 `luci.mk`。
+* **跳过上游下载的正确姿势**：不可设置 `PKG_SKIP_DOWNLOAD`（会被 `include/package.mk` 覆盖），正确方式是在预置文件命中时将 `PKG_SOURCE_URL` **置空**。
+* **上游连接规范**：上游 `iscute.cn` 的 HTTPS 证书长期过期，必须使用 `http://` 避免触发 SSL 握手阻断。
+
+---
+
+## ⚠️ 关键注意事项与排坑指南
+
+> [!CAUTION]
+> **空路径回退风险**：
+> 当配置中的共享路径在设备上不存在时（如移动硬盘未挂载成功），chfs 进程会默认回退至**自身所在目录**（即 `/usr/bin`）作为共享根目录！此行为将导致系统二进制目录直接在网络中暴露。保存配置时请务必核验挂载点真实性。
+
+> [!WARNING]
+> **内核备份堆积**：
+> 内核管理模块备份位于 `/etc/chfs/kernel-backup`，每次安装新内核均会生成完整快照，且不会做去重或数量上限回收（4 次操作约占用 32 MB 空间）。小容量闪存设备请定期手动清理旧备份。
+
+1. **BusyBox 工具链缺失**：路由器环境中 BusyBox 不含 `install` 命令。原子替换统一采用 `chmod 0755` + `mv -f` 实现。
+2. **ucode 语言陷阱**：
+* `'use strict'` 下不存在全局 `undefined`，访问会抛出运行时错误；判断空值请使用 `=== null`。
+* 自定义函数必须声明在调用代码之前，ucode **不具备变量与函数声明提升机制**。
+
+
+3. **LuCI 视图组件坑位**：
+* `E('button')` 生成的 DOM 默认 `type="submit"`，若放置在 form 内会导致整个页面刷新，自建交互按钮务必显式声明 `type="button"`。
+* 避免使用 `cbi-button-apply` 类名，否则会被第三方主题（如 Mint 主题）无条件绑定保存-重载逻辑，导致实际点击事件被拦截。请统一使用 `cbi-button-action`。
+
+
+4. **国际化哈希失效**：
+* 源码中的 `_()` 必须使用**英文 msgid**。若使用中文作为键名，`po2lmo` 会在 `key_id == val_id` 时跳过索引构建，导致中文翻译大规模丢失。
+
+
+
+---
+
+## 📦 云端流水线与制品架构
+
+项目通过 GitHub Actions 矩阵生成 4 类构建制品：
+
+| 构建 Artifact 名称 | 封装格式 | 对应系统基底 | 适配目标平台 |
+| --- | --- | --- | --- |
+| `packages-apk-aarch64_cortex-a53` | **apk** | ImmortalWrt SNAPSHOT | mediatek/filogic (ARM64) |
+| `packages-apk-x86_64` | **apk** | ImmortalWrt SNAPSHOT | x86/64 |
+| `packages-ipk-aarch64_cortex-a53` | **ipk** | OpenWrt 24.10.x | mediatek/filogic (ARM64) |
+| `packages-ipk-x86_64` | **ipk** | OpenWrt 24.10.x | x86/64 |
+
+> [!TIP]
+> **Release 竞态避免机制**：打 `v*` tag 时由 `build.yml` 独占创建 Release 并上传基础包；随后的内核二进制由 `release.yml` 通过手动调度（输入指定 tag）追加资产，规避 GitHub API 422 冲突。
