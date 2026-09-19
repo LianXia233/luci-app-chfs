@@ -1,0 +1,44 @@
+{
+	"luci-app-chfs": {
+		"description": "Grant UCI and ubus access for luci-app-chfs",
+		"read": {
+			"uci": [ "chfs" ],
+			"ubus": {
+				"service": [ "list" ],
+				"luci.chfs": [
+					"read_config",
+					"status",
+					"read_ini",
+					"preview_ini",
+					"probe_listen",
+					"probe_webdav"
+				]
+			},
+			"file": {
+				"/etc/init.d/chfs": [ "read" ],
+				"/usr/bin/chfs": [ "read" ],
+				"/var/etc/chfs.ini": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "chfs" ],
+			"ubus": {
+				"service": [ "list" ],
+				"luci.chfs": [
+					"read_config",
+					"write_config",
+					"init_action",
+					"status",
+					"read_ini",
+					"preview_ini",
+					"probe_listen",
+					"probe_webdav"
+				]
+			},
+			"file": {
+				"/etc/init.d/chfs": [ "exec" ],
+				"/usr/bin/chfs": [ "exec" ]
+			}
+		}
+	}
+}
