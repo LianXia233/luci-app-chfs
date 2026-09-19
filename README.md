@@ -14,17 +14,22 @@ OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer�
 - **状态页真实性**：所有状态数据均通过实际探测获取（`pgrep` 进程检测、`/proc/net/tcp` 端口
   监听检测、`curl PROPFIND` WebDAV 探测），非界面装饰。
 - **配置文件预览**：展示由 UCI 配置实际渲染出的 `chfs.ini` 内容。
+- **内核管理**：提供「一键下载」与「手动上传」两条内核替换路径，并支持安装前自动备份、
+  失败回滚。安装前会校验 ELF 魔数、`e_machine` 与设备架构是否匹配、文件大小是否合理。
 
 ## 目录结构
 
 ```
 .
-├── .github/workflows/build.yml            # 云编译：apk/ipk × arm64/amd64 四条目矩阵
+├── .github/workflows/
+│   ├── build.yml                          # 云编译：apk/ipk × arm64/amd64 四条目矩阵
+│   └── release.yml                        # 打 tag 时发布内核二进制为 Release 资产
 ├── chfs/                                  # chfs 二进制包
 │   ├── Makefile                           # 预置二进制优先，缺失时回退上游下载
 │   ├── extract-bin.sh                     # 从上游 zip 中定位并规范化二进制
 │   ├── bin-manifest.txt                   # 预置二进制清单（架构、大小、sha256）
 │   └── bin/                               # 预置二进制（已入库，供云编译直接取用）
+│       ├── SHA256SUMS                     # 按架构的校验值清单
 │       ├── arm64/chfs                     #   OpenWrt ARCH: aarch64
 │       └── amd64/chfs                     #   OpenWrt ARCH: x86_64
 ├── tools/fetch-chfs.py                    # 下载/更新预置二进制并生成清单
@@ -44,7 +49,7 @@ OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer�
         └── usr/share/
             ├── luci/menu.d/luci-app-chfs.json   # 菜单（挂载于 网络存储）
             ├── rpcd/acl.d/luci-app-chfs.json    # ACL 权限
-            └── rpcd/ucode/chfs.uc               # ubus 后端（对象 luci.chfs）
+            └── rpcd/ucode/luci.chfs             # ubus 后端（对象 luci.chfs）
 ```
 
 ## 编译
@@ -223,7 +228,9 @@ config account
 
 ## 后端接口
 
-ucode 后端通过 ubus 对象 `luci.chfs` 暴露 8 个方法：
+ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
+
+### 服务与配置
 
 | 方法 | 说明 |
 |---|---|
@@ -235,6 +242,67 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 8 个方法：
 | `preview_ini` | 预览待生成的 chfs.ini 内容（不落盘） |
 | `probe_listen` | 探测端口监听状态 |
 | `probe_webdav` | 通过 PROPFIND 探测 WebDAV 可用性 |
+
+### 内核管理
+
+| 方法 | 说明 |
+|---|---|
+| `kernel_info` | 当前内核路径、大小、ELF 机器类型、架构是否匹配、SHA256 |
+| `kernel_sources` | 探测候选下载源可用性 |
+| `kernel_pending` | 列出待安装的内核文件 |
+| `kernel_backups` | 列出已备份的内核 |
+| `kernel_download` | 按白名单前缀下载指定 URL 到待安装区 |
+| `kernel_install` | 校验后备份现有内核并安装 |
+| `kernel_restore` | 从备份回滚 |
+| `kernel_discard` | 丢弃待安装文件 |
+
+## 内核管理
+
+随包入库的内核覆盖 arm64 与 amd64 两种架构。当出现以下情况时，需要替换设备上的内核：
+
+1. 目标架构未预置二进制（如 mipsle / armv7）；
+2. 上游发布了新版本，不希望等待插件重新打包；
+3. 随包二进制损坏或缺失。
+
+插件提供两条补充路径：
+
+- **一键下载**：从本仓库的 Release 资产下载对应架构的内核。信任锚点是本仓库且走 HTTPS，
+  相比从上游 `http://iscute.cn` 明文下载显著更安全。下载源经白名单前缀校验，
+  不接受任意 URL，避免沦为 SSRF 跳板。
+- **手动上传**：在网页上自行上传内核文件。
+
+无论哪条路径，文件都先落到 `/etc/luci-uploads` 待安装区，**不会直接覆盖运行中的内核**。
+点击安装后按以下流程执行：
+
+```
+校验 (ELF 魔数 / e_machine 架构匹配 / 大小 100KB-64MB)
+  -> 备份现有内核到 /etc/chfs/kernel-backup/chfs.<时间戳>
+  -> 停止服务
+  -> install -m0755 覆盖 /usr/bin/chfs
+  -> 启动服务
+  -> 任一步失败则自动回滚到备份
+```
+
+### 下载源与架构映射
+
+`.github/workflows/release.yml` 在打 `v*` tag 或手动触发时，会把预置二进制发布为 Release 资产：
+
+| 设备 `uname -m` | 资产名 | ELF e_machine |
+|---|---|---|
+| `aarch64` | `chfs-linux-arm64-<ver>` | 183 |
+| `x86_64` | `chfs-linux-amd64-<ver>` | 62 |
+
+下载源候选（按顺序探测）：
+
+1. `https://github.com/LianXia233/luci-app-chfs/releases/download/<tag>/<资产>`
+2. `https://github.com/LianXia233/luci-app-chfs/releases/latest/download/<资产>`
+3. 上述两个地址经 `gh.acg2.mom` / `gh-proxy.com` / `ghfast.top` 镜像代理
+4. `https://raw.githubusercontent.com/LianXia233/luci-app-chfs/<branch>/chfs/bin/<arch>/chfs`
+   （及其 `gh.acg2.mom` 镜像）
+
+设备侧优先使用 `curl`（GitHub Release 资产会 302 跳转到 Azure Blob，需 `-L` 跟随重定向），
+`uclient-fetch` 作为兜底。注意：设备上的 `/usr/bin/wget` 通常是 `/bin/uclient-fetch` 的软链，
+**不支持 `-S` 选项**。
 
 ## 安装
 
@@ -305,7 +373,8 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
 ### 触发云编译
 
 - 推送到 `main` 分支 或 发起 PR：自动构建全部 4 组，产物上传为 artifact。
-- 打 `v*` tag 或手动运行并填写 `release_tag`：构建完成后自动创建 Release 并附带全部包。
+- 打 `v*` tag 或手动运行并填写 `release_tag`：构建完成后自动创建 Release 并附带全部包；
+  `release.yml` 同时把预置内核二进制发布为 Release 资产，供设备侧「一键下载」使用。
 
 ## 已知限制
 
@@ -313,3 +382,8 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
   支持的架构受上游发布范围限制。
 - WebDAV 无独立开关，始终与 HTTP 共享端口与访问规则。
 - 上游 HTTPS 证书过期，`PKG_SOURCE_URL` 使用 HTTP 协议。
+- 内核管理仅校验「ELF 格式 + 架构匹配」，不做签名验证。信任锚点完全落在本仓库的可信性上，
+  因此下载 URL 强制走白名单前缀。手动上传路径由用户自行保证文件来源可信。
+- 设备上无 `curl` 且无 `uclient-fetch` 时，「一键下载」不可用，只能走手动上传。
+- 替换内核会短暂中断服务（停止 → 覆盖 → 启动）。备份保留在 `/etc/chfs/kernel-backup`，
+  由用户自行清理，插件不做自动回收。

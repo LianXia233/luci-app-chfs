@@ -26,8 +26,9 @@ include $(TOPDIR)/feeds/luci/luci.mk
 #
 # 背景: luci.mk 的 Package/$(PKG_NAME)/install 用 `cp -pR $(PKG_BUILD_DIR)/root/*`
 # 保留源文件权限. 但本仓库在 Windows 上开发 (git core.filemode=false), 可执行位
-# 无法写进 git 索引, 检出后 init 脚本是 0644, 装到设备时 postinst 报:
-#   /etc/init.d/chfs: Permission denied
+# 无法写进 git 索引, 检出后这些脚本是 0644, 装到设备后:
+#   /etc/init.d/chfs: Permission denied            (postinst 无法调用 init 脚本)
+#   rpcd 不加载 /usr/share/rpcd/ucode/luci.chfs    (无执行位不被视为可加载模块)
 #
 # 不能重定义 Package/$(PKG_NAME)/install —— luci.mk 已无条件定义它, 覆盖会连带
 # 丢掉 htdocs/root 的拷贝逻辑. 正确做法是使用 install_lib 钩子:
@@ -38,6 +39,7 @@ include $(TOPDIR)/feeds/luci/luci.mk
 define Package/luci-app-chfs/install_lib
 	chmod 0755 $(1)/etc/init.d/chfs
 	chmod 0755 $(1)/etc/uci-defaults/99-luci-app-chfs
+	chmod 0755 $(1)/usr/share/rpcd/ucode/luci.chfs
 endef
 
 # 兼容 luci.mk 的两代调用签名:
