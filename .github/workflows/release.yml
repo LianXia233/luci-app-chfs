@@ -96,8 +96,12 @@ jobs:
           fail=0
 
           while read -r sum name; do
-            # 跳过注释与空行
-            case "$name" in ''|'#'*) continue ;; esac
+            # 跳过注释与空行: 注释行以 # 开头, 经 read 拆分后 # 落在第一字段 sum 上,
+            # 故必须检查 $sum 而非 $name (否则注释会被误判为「引用了不存在的二进制」)。
+            case "$sum" in ''|'#'*) continue ;; esac
+            # 仅处理合法 sha256 行 (64 位十六进制); 其余说明性文字一律跳过
+            case "$sum" in *[!0-9a-fA-F]*) continue ;; esac
+            [ "${#sum}" = "64" ] || continue
 
             bin="chfs/bin/$name/chfs"
             test -f "$bin" || { echo "::error::SHA256SUMS 引用了不存在的 $bin"; fail=1; continue; }
