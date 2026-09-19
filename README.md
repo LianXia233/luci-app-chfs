@@ -343,6 +343,9 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
 | 越权路径 | `kernel_install` 传 `/tmp/evil` 被拒 |
 | 白名单外 URL | `kernel_download` 被拒 |
 
+以上结果已用云编译产物（GitHub Actions run #8 的 `luci-app-chfs-1.0.0-r4.apk`）在真机复核通过，
+四个标签页文案均为中文。
+
 ### 下载源与架构映射
 
 `.github/workflows/release.yml` 在打 `v*` tag 或手动触发时，会把预置二进制发布为 Release 资产：
@@ -449,7 +452,9 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
   或用到了表单的默认提交行为，自定义动作按钮都会被截走。本插件自建按钮统一使用
   `cbi-button-action` + `type="button"`，扩展界面时请遵循同一约定。
 - 替换内核会短暂中断服务（停止 → 覆盖 → 启动）。备份保留在 `/etc/chfs/kernel-backup`，
-  由用户自行清理，插件不做自动回收。
+  由用户自行清理，插件不做自动回收；**备份也不按内容去重、没有数量上限**，
+  同一份内核被反复安装会生成多份字节完全相同的备份（实测连续 4 次安装累积 4 份
+  sha256 相同的 7.96 MB 文件，约占 31.9 MB），请定期手工清理旧备份。
 - **共享根目录不存在时，chfs 会把 `可执行文件所在目录`（通常是 `/usr/bin`）当作共享路径**，
   相当于把系统二进制目录暴露出去。实测：配置里写 `/mnt/sda1` 而该挂载点不存在时，
   启动日志显示 `Shared path: /usr/bin`。
