@@ -147,6 +147,7 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          files: dist/*
           body: |
             chfs 文件共享服务器内核二进制。
 

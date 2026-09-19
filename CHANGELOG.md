@@ -45,6 +45,13 @@ gh.acg2.mom / gh-proxy / ghfast 镜像）从 404 变为可用。
 | `chfs-linux-amd64-3.1` | 内核二进制（x86_64） |
 | `SHA256SUMS` | 内核二进制校验值 |
 
+### 修正
+
+- **`release.yml` 的发布步骤此前缺失 `files:` 参数**：「准备发布资产」已把内核二进制复制到 `dist/`，
+  但发布步骤只更新了 Release 的标题与正文，从未上传 `dist/` 文件，导致内核资产始终未进入 Release、
+  下载源持续 404。补上 `files: dist/*` 后，该工作流以 `PATCH` 向已存在的 `v1.0.0` Release
+  追加 `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1` / `SHA256SUMS`，且不清空 `build.yml` 已发布的插件包资产。
+
 ### 已知问题
 
 - **内核二进制挂在 `latest` Release 上，存在后续被覆盖的风险**：后端 `kernel_sources`
