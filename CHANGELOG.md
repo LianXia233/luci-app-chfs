@@ -7,6 +7,55 @@
 
 ---
 
+## [1.0.0] - 2026-09-19（首个正式 Release tag）
+
+将代码状态 `1.0.0-r5` 打为首个正式 Release tag `v1.0.0`，并把内核二进制发布到
+GitHub Releases，使设备侧「一键下载内核」的 4 个 Release 类下载源（GitHub Release 官方 /
+gh.acg2.mom / gh-proxy / ghfast 镜像）从 404 变为可用。
+
+### 新增
+
+- **首个正式 Release tag `v1.0.0`**：对应 `PKG_VERSION 1.0.0` / `PKG_RELEASE 5` 的代码状态。
+  推送该 tag 后由 `build.yml` 自动构建并发布插件包（apk + ipk，arm64 / amd64 两类架构）。
+- **Apache-2.0 `LICENSE` 文件**：此前 Makefile 已声明 Apache-2.0，但仓库缺少实际的 LICENSE
+  文件（GitHub 仓库页显示为无许可证）。本次补齐，与 `PKG_LICENSE` 声明对齐。
+
+### 变更
+
+- **`release.yml` 改为仅手动触发（不再跟随 `v*` tag 自动运行）**。
+  - 背景：`build.yml` 与 `release.yml` 都会在 `v*` tag 推送时各自创建同名 Release
+    （前者发插件包、后者发内核二进制），并发抢建会导致其中一方收到 GitHub 的
+    `422 Release already exists` 而失败。
+  - 新流程：tag 推送时由 `build.yml` 独占发布插件包；待其 Release 创建成功后，
+    再手动运行 `Release Chfs Kernel` 并指定同一 tag，`release.yml` 以 `PATCH`
+    方式向该 Release **追加**内核二进制资产，不再与 `build.yml` 冲突。
+  - 内核资产名沿用 `chfs-linux-<arch>-3.1`，下载链路 `releases/latest/download/<资产>`
+    因此可用（后端 `kernel_sources` 即使用该路径）。
+
+### 发布资产
+
+`v1.0.0` Release 包含：
+
+| 资产 | 说明 |
+| --- | --- |
+| `chfs_3.1-1_*.apk` / `*.ipk` | chfs 二进制本体 |
+| `luci-app-chfs_1.0.0-5_*.apk` / `*.ipk` | LuCI 应用 |
+| `luci-i18n-chfs-zh-cn_*.apk` / `*.ipk` | 简体中文翻译 |
+| `chfs-linux-arm64-3.1` | 内核二进制（aarch64） |
+| `chfs-linux-amd64-3.1` | 内核二进制（x86_64） |
+| `SHA256SUMS` | 内核二进制校验值 |
+
+### 已知问题
+
+- **内核二进制挂在 `latest` Release 上，存在后续被覆盖的风险**：后端 `kernel_sources`
+  使用 `releases/latest/download/`，而 `latest` 是「最新的非预发布 Release」。
+  若日后发布仅含插件包、不含内核的 `v1.0.1`，`latest` 会指向它，导致内核下载源再次 404。
+  根治方案是把内核二进制固定发布到独立 tag（如 `v3.1`）并让后端改用
+  `releases/download/v3.1/` 显式路径，本次暂未做（需改后端 + 重新部署验证），
+  留待后续迭代。
+
+---
+
 ## [1.0.0-r5] - 2026-09-19
 
 在主配置页补上「一键跳转 WebUI」，并让界面上的端口一律反映服务的真实生效值。

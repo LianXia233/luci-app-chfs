@@ -25,7 +25,7 @@ OpenWrt / ImmortalWrt 下的 [chfs](http://iscute.cn/chfs)（CuteHttpFileServer�
 .
 ├── .github/workflows/
 │   ├── build.yml                          # 云编译：apk/ipk × arm64/amd64 四条目矩阵
-│   └── release.yml                        # 打 tag 时发布内核二进制为 Release 资产
+│   └── release.yml                        # 手动触发: 向已存在 tag 的 Release 追加内核二进制资产
 ├── chfs/                                  # chfs 二进制包
 │   ├── Makefile                           # 预置二进制优先，缺失时回退上游下载
 │   ├── extract-bin.sh                     # 从上游 zip 中定位并规范化二进制
@@ -375,7 +375,7 @@ ucode 后端通过 ubus 对象 `luci.chfs` 暴露 16 个方法。
 
 ### 下载源与架构映射
 
-`.github/workflows/release.yml` 在打 `v*` tag 或手动触发时，会把预置二进制发布为 Release 资产：
+内核二进制由 `.github/workflows/release.yml` 发布为 Release 资产。为避免与插件包的发布流程抢建同名 Release，该工作流改为**手动触发**：在 `build.yml` 因打 `v*` tag 而发布插件包之后，手动运行 `Release Chfs Kernel` 并指定同一 tag，向该 Release **追加**内核资产：
 
 | 设备 `uname -m` | 资产名 | ELF e_machine |
 |---|---|---|
@@ -463,8 +463,16 @@ ImmortalWrt SNAPSHOT SDK 使用 `gcc-14.4.0_musl`，与 ImmortalWrt 设备环境
 ### 触发云编译
 
 - 推送到 `main` 分支 或 发起 PR：自动构建全部 4 组，产物上传为 artifact。
-- 打 `v*` tag 或手动运行并填写 `release_tag`：构建完成后自动创建 Release 并附带全部包；
-  `release.yml` 同时把预置内核二进制发布为 Release 资产，供设备侧「一键下载」使用。
+- 打 `v*` tag（例如 `v1.0.0`）：`build.yml` 构建完成后自动创建 Release 并附带全部插件包
+  （`chfs` / `luci-app-chfs` / `luci-i18n-chfs-zh-cn` 的 apk + ipk）。
+- 在上述 Release 创建成功后，手动运行 `Release Chfs Kernel` 工作流、指定同一 tag，
+  由 `release.yml` 向该 Release **追加**内核二进制资产（`chfs-linux-arm64-3.1` /
+  `chfs-linux-amd64-3.1` / `SHA256SUMS`），供设备侧「一键下载」使用。
+
+  > 为什么内核发布要分两步、且 `release.yml` 改为手动：两个工作流若都在 `v*` tag
+  > 推送时自动运行，会并发抢建同名 Release，后到的一方会收到 GitHub 的
+  > 422 "Release already exists" 而失败。让 `build.yml` 独占 tag 触发的发布、
+  > `release.yml` 在其后手动追加，即可彻底避免该竞态。
 
 ## 已知限制
 

@@ -1,15 +1,23 @@
 #
 # 内核发布工作流
 #
-# 职责: 在推送 v* 形式的 tag 时, 把仓库内预置的 chfs 二进制发布为 Release 资产,
+# 职责: 把仓库内预置的 chfs 二进制发布为 Release 资产,
 #       使路由器端的 LuCI 插件「一键下载内核」可以从本仓库直接下载内核,
 #       而不必再从上游 iscute.cn (HTTP 明文, 证书过期) 获取。
 #
-# 触发方式:
-#   1. 推送 tag:  git tag v3.1 && git push origin v3.1
-#   2. 手动触发:  Actions -> Release Chfs Kernel -> Run workflow (可指定 tag)
+# 触发方式 (仅手动):
+#   手动触发:  Actions -> Release Chfs Kernel -> Run workflow, 指定已存在的 tag。
 #
-# 产物:
+#   为什么要手动而非跟随 v* tag 自动发布:
+#     build.yml 在推送 v* tag 时也会自动发布插件包 (apk/ipk) 到同名 Release。
+#     若本工作流也在 tag 推送时自动运行, 二者会并发抢建同名 Release,
+#     后到的一方会收到 GitHub 的 422 "Release already exists" 而失败。
+#     故此处改为手动: 在 build.yml 完成插件包发布之后, 再手动触发本工作流,
+#     它会 PATCH 该 tag 的 Release 并追加内核二进制, 不会与 build.yml 冲突。
+#
+#   用法: 指定 release_tag 为已存在的 tag (例如 v1.0.0) 即可。
+#
+# 产物 (追加到指定 tag 的 Release):
 #   chfs-linux-arm64-3.1    (aarch64_cortex-a53 等 64 位 ARM 目标)
 #   chfs-linux-amd64-3.1    (x86_64 目标)
 #   SHA256SUMS              (两个二进制的校验值)
@@ -21,15 +29,12 @@
 name: Release Chfs Kernel
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       release_tag:
-        description: '要发布的 tag (例如 v3.1)'
+        description: '已存在的 tag, 向其 Release 追加内核二进制 (例如 v1.0.0)'
         required: true
-        default: 'v3.1'
+        default: 'v1.0.0'
 
 # 发布 Release 需要写权限
 permissions:
