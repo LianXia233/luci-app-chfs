@@ -604,3 +604,5 @@ msgstr "确定"
 msgid "Cancel"
 msgstr "取消"
 
+msgid "Kernel management"
+msgstr "内核管理"
