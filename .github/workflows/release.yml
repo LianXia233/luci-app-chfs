@@ -1,29 +1,25 @@
 #
-# 内核发布工作流
+# 内核补发工作流（手动）
 #
-# 职责: 把仓库内预置的 chfs 二进制发布为 Release 资产,
-#       使路由器端的 LuCI 插件「一键下载内核」可以从本仓库直接下载内核,
-#       而不必再从上游 iscute.cn (HTTP 明文, 证书过期) 获取。
+# 职责: 把仓库内预置的 chfs 二进制补发到指定 tag 的 Release,
+#       供路由器端 LuCI 插件「一键下载内核」使用,
+#       避免从上游 iscute.cn (HTTP 明文, 证书过期) 获取。
 #
-# 触发方式 (仅手动):
-#   手动触发:  Actions -> Release Chfs Kernel -> Run workflow, 指定已存在的 tag。
+# 与 build.yml 的分工:
+#   build.yml 在 tag 推送 / 手动发布时已经会把内核二进制一并发布
+#   (publish_kernel 默认开启), 并通过 tools/package-release.py 生成覆盖全部
+#   资产的 SHA256SUMS。
 #
-#   为什么要手动而非跟随 v* tag 自动发布:
-#     build.yml 在推送 v* tag 时也会自动发布插件包 (apk/ipk) 到同名 Release。
-#     若本工作流也在 tag 推送时自动运行, 二者会并发抢建同名 Release,
-#     后到的一方会收到 GitHub 的 422 "Release already exists" 而失败。
-#     故此处改为手动: 在 build.yml 完成插件包发布之后, 再手动触发本工作流,
-#     它会 PATCH 该 tag 的 Release 并追加内核二进制, 不会与 build.yml 冲突。
+#   本工作流是**补发通道**, 用于以下几种情况:
+#     1. 只更新了内核二进制, 不想重跑六架构编译;
+#     2. 某次 Release 的内核资产缺失需要补齐;
+#     3. build.yml 发布的内核被误删需要找回。
 #
-#   用法: 指定 release_tag 为已存在的 tag (例如 v1.0.0) 即可。
+#   它只上传两个内核二进制本身, 不再单独上传 SHA256SUMS ——
+#   该文件的权威版本由 build.yml 生成(覆盖包 + 内核), 此处覆盖会使其
+#   只剩内核条目而丢失包的校验值。
 #
-# 产物 (追加到指定 tag 的 Release):
-#   chfs-linux-arm64-3.1    (aarch64_cortex-a53 等 64 位 ARM 目标)
-#   chfs-linux-amd64-3.1    (x86_64 目标)
-#   SHA256SUMS              (两个二进制的校验值)
-#
-# 命名沿用上游习惯 (chfs-linux-<arch>-<ver>), 便于与上游产物对照。
-# 架构精简为 arm64 / amd64 两种, 与 build.yml 的编译矩阵保持一致。
+# 用法: Actions -> Release Chfs Kernel -> Run workflow, 指定已存在的 tag。
 #
 
 name: Release Chfs Kernel
@@ -32,9 +28,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: '已存在的 tag, 向其 Release 追加内核二进制 (例如 v1.0.0)'
+        description: '已存在的 tag, 向其 Release 追加/覆盖内核二进制'
         required: true
-        default: 'v1.0.0'
+        default: 'v1.0.1'
 
 # 发布 Release 需要写权限
 permissions:
@@ -42,14 +38,12 @@ permissions:
 
 jobs:
   release:
-    name: 发布 chfs 内核二进制
+    name: 补发 chfs 内核二进制
     runs-on: ubuntu-latest
 
     steps:
       - name: 检出源码
         uses: actions/checkout@v4
-        # push tag 时检出该 tag; workflow_dispatch 时检出所选分支 (默认 main)。
-        # 二进制与 SHA256SUMS 必须来自同一提交, 故不额外指定 ref。
 
       - name: 校验预置二进制
         run: |
@@ -92,14 +86,12 @@ jobs:
           set -e
 
           # SHA256SUMS 为 "<sha256>  <架构目录名>" 两列格式
-          # 若二进制的实际值与之不符, 说明入库文件被替换而校验文件未同步
           fail=0
 
           while read -r sum name; do
-            # 跳过注释与空行: 注释行以 # 开头, 经 read 拆分后 # 落在第一字段 sum 上,
-            # 故必须检查 $sum 而非 $name (否则注释会被误判为「引用了不存在的二进制」)。
+            # 跳过注释与空行: 注释行以 # 开头, 经 read 拆分后 # 落在第一字段 sum 上
             case "$sum" in ''|'#'*) continue ;; esac
-            # 仅处理合法 sha256 行 (64 位十六进制); 其余说明性文字一律跳过
+            # 仅处理合法 sha256 行 (64 位十六进制)
             case "$sum" in *[!0-9a-fA-F]*) continue ;; esac
             [ "${#sum}" = "64" ] || continue
 
@@ -119,85 +111,35 @@ jobs:
 
           [ "$fail" = "0" ] || exit 1
 
-      - name: 准备发布资产
+      - name: 准备资产
         run: |
           set -e
-
           mkdir -p dist
-
-          # 重命名为上游风格, 让下载方一眼看出架构与版本
           cp chfs/bin/arm64/chfs dist/chfs-linux-arm64-3.1
           cp chfs/bin/amd64/chfs dist/chfs-linux-amd64-3.1
-          cp chfs/bin/SHA256SUMS dist/SHA256SUMS
-
           chmod 0755 dist/chfs-linux-arm64-3.1 dist/chfs-linux-amd64-3.1
-
-          echo "==== 发布资产 ===="
+          echo "==== 待上传 ===="
           ls -la dist/
+          sha256sum dist/*
 
-          echo "==== 校验值 ===="
-          cd dist
-          sha256sum chfs-linux-arm64-3.1 chfs-linux-amd64-3.1
-
-      - name: 发布 Release
+      - name: 追加到 Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          name: chfs ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
+          tag_name: ${{ inputs.release_tag }}
           files: dist/*
-          body: |
-            chfs 文件共享服务器内核二进制。
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            ## 资产说明
-
-            | 文件 | 目标架构 | 适用设备 |
-            |------|----------|----------|
-            | `chfs-linux-arm64-3.1` | aarch64 | aarch64_cortex-a53 等 64 位 ARM 路由 |
-            | `chfs-linux-amd64-3.1` | x86_64 | x86_64 软路由 / 虚拟机 |
-            | `SHA256SUMS` | — | 校验值清单 |
-
-            ## 安装方式
-
-            **方式一：LuCI 界面一键下载（推荐）**
-
-            服务 → chfs 文件共享 → 内核管理 → 点击「从仓库下载」，
-            插件会按当前设备架构自动选择对应二进制并校验 SHA256 后安装。
-
-            **方式二：手动下载安装**
-
-            ```sh
-            # 在路由器上执行 (arm64 设备)
-            cd /tmp
-            wget https://github.com/LianXia233/luci-app-chfs/releases/latest/download/chfs-linux-arm64-3.1
-            sha256sum chfs-linux-arm64-3.1
-            chmod 0755 chfs-linux-arm64-3.1
-            /etc/init.d/chfs stop
-            cp /usr/bin/chfs /usr/bin/chfs.bak
-            mv chfs-linux-arm64-3.1 /usr/bin/chfs
-            /etc/init.d/chfs start
-            ```
-
-            ## 说明
-
-            本仓库不编译 chfs 源码，仅重新分发上游发布的预编译二进制。
-            二进制来源为 `http://iscute.cn/tar/chfs/3.1/`，上游证书已过期且不提供校验值，
-            故此处发布的 SHA256SUMS 为本仓库实测值，作为完整性比对基线。
-
-            路由器端若直连 GitHub 不稳定，可在插件的「下载源」中切换为加速镜像。
-
-      - name: 输出发布摘要
+      - name: 输出摘要
         run: |
-          echo "## 内核发布完成" >> $GITHUB_STEP_SUMMARY
+          echo "## 内核补发完成" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 资产 | 大小 | SHA256 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|--------|" >> $GITHUB_STEP_SUMMARY
-
           for arch in arm64 amd64; do
             f="dist/chfs-linux-$arch-3.1"
-            size=$(stat -c%s "$f")
-            sum=$(sha256sum "$f" | cut -d' ' -f1)
-            echo "| \`chfs-linux-$arch-3.1\` | $size | \`$sum\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| \`chfs-linux-$arch-3.1\` | $(stat -c%s "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |" >> $GITHUB_STEP_SUMMARY
           done
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "SHA256SUMS 的权威版本由 build.yml 生成，本工作流不覆盖。" >> $GITHUB_STEP_SUMMARY

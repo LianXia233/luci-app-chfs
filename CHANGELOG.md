@@ -7,6 +7,65 @@
 
 ---
 
+## [1.0.1] - 2026-09-20
+
+补全 `aarch64_generic` 架构，重构云编译矩阵与 Release 资产结构。
+插件代码本身未改动，`PKG_RELEASE` 由 5 提升到 6 以对应新的可安装产物。
+
+### 新增
+
+- **`aarch64_generic` 架构支持**：矩阵加入 `armsr/armv8` target，与既有的
+  `aarch64_cortex-a53`（mediatek/filogic）、`x86_64`（x86/64）构成三架构覆盖。
+  OpenWrt 与 ImmortalWrt 两侧的 apk / ipk 均产出该架构。
+- **`tools/package-release.py`**：产物整理脚本，负责读取包内控制信息、
+  按 `<name>-<version>_<arch>.<ext>` 规范重命名、生成 `SHA256SUMS`、
+  `manifest.json` 与 Release 说明。
+
+### 变更
+
+- **编译矩阵由 4 组扩到 6 组**（三架构 × apk/ipk）。
+- **架构不再硬编码信任**：`defconfig` 后从 `.config` 读取
+  `CONFIG_TARGET_ARCH_PACKAGES` 并与矩阵声明比对，不一致直接失败。
+  此前若 target 改名或选错 target，会静默产出错误架构的包。
+- **架构无关包只编译一次**：`luci-app-chfs` 与 `luci-i18n-chfs-zh-cn` 是
+  `LUCI_PKGARCH:=all`，三架构产物完全一致；改为只在每种格式的一个 job 编译，
+  依赖的 `luci-base` host 工具（`po2lmo` / `jsmin`）也只构建一次，
+  六个 job 里省去四次重复编译。
+- **SDK 与 luci 源码进缓存**：稳定版 SDK（OpenWrt 24.10.5）永久命中；
+  ImmortalWrt SNAPSHOT 按 UTC 日期命中，避免长期复用每日变化的旧包。
+- **产物在构建 job 内即重命名**：apk 的文件名不含架构，三个架构 job 会产出同名
+  `chfs-3.1-r1.apk`，不区分就无法在同一个 Release 中共存。
+- **Release 资产按架构分目录**：`x86_64/` `aarch64_cortex-a53/`
+  `aarch64_generic/` `all/`，根目录放内核二进制、`SHA256SUMS` 与 `manifest.json`。
+- **内核二进制并入主发布流程**：`build.yml` 发布时一并把
+  `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1` 上传（可用 `publish_kernel` 关闭），
+  不再需要先发插件包、再手动跑一次补发工作流。
+- **`release.yml` 降级为补发通道**：仅在只换了内核二进制或资产缺失时手动使用，
+  且不再上传 `SHA256SUMS`（该文件由 `build.yml` 生成覆盖包 + 内核的权威版本，
+  补发覆盖会使其只剩内核条目）。
+- **发布时清理旧资产**：删除该 tag 下不属于本次产出的历史文件（可用
+  `prune_assets` 关闭），避免资产随版本累积。
+
+### 发布资产
+
+| 路径 | 说明 |
+| --- | --- |
+| `x86_64/chfs-3.1-r1_x86_64.apk` / `.ipk` | chfs 本体（x86_64） |
+| `aarch64_cortex-a53/chfs-3.1-r1_aarch64_cortex-a53.apk` / `.ipk` | chfs 本体（Filogic） |
+| `aarch64_generic/chfs-3.1-r1_aarch64_generic.apk` / `.ipk` | chfs 本体（通用 ARMv8） |
+| `all/luci-app-chfs-1.0.0-r6_all.apk` / `.ipk` | LuCI 应用（架构无关） |
+| `all/luci-i18n-chfs-zh-cn-1.0.0-r6_all.apk` / `.ipk` | 简体中文翻译 |
+| `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1` | 内核二进制 |
+| `SHA256SUMS` / `manifest.json` | 校验值与机器可读清单 |
+
+### 已知问题
+
+- 内核二进制仍挂在 `latest` Release 上（`releases/latest/download/` 路径依赖）。
+  若日后发布不含内核的 tag，`latest` 会漂移，导致设备端下载源 404。
+  根治需把内核固定发布到独立 tag（如 `v3.1`）并改后端路径，本次未做。
+
+---
+
 ## [1.0.0] - 2026-09-19（首个正式 Release tag）
 
 将代码状态 `1.0.0-r5` 打为首个正式 Release tag `v1.0.0`，并把内核二进制发布到
@@ -465,6 +524,8 @@ gh.acg2.mom / gh-proxy / ghfast 镜像）从 404 变为可用。
 - **1.1.x**：补充更多架构的预置二进制；增加共享目录在线预览。
 - **1.2.x**：支持多实例（不同端口启动多个 chfs 进程）。
 
+[1.0.1]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.1
+[1.0.0]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
 [1.0.0-r3]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
 [1.0.0-r2]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0
 [1.0.0-r1]: https://github.com/LianXia233/luci-app-chfs/releases/tag/v1.0.0

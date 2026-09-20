@@ -14,7 +14,7 @@ LUCI_DESCRIPTION:=chfs (CuteHttpFileServer) 的 LuCI 管理界面, 支持端口�
 
 PKG_NAME:=luci-app-chfs
 PKG_VERSION:=1.0.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 PKG_MAINTAINER:=LianXia233
 PKG_LICENSE:=Apache-2.0

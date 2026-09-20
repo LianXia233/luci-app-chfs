@@ -8,7 +8,7 @@
 [![ImmortalWrt](https://img.shields.io/badge/ImmortalWrt-SNAPSHOT-orange?logo=openwrt&logoColor=white)](#)
 [![LuCI Architecture](https://img.shields.io/badge/LuCI-JS%20%2B%20ucode-6f42c1)](#)
 [![Package Format](https://img.shields.io/badge/Package-apk%20%7C%20ipk-success)](#)
-[![Architecture](https://img.shields.io/badge/Arch-aarch64%20%7C%20x86__64-informational)](#)
+[![Architecture](https://img.shields.io/badge/Arch-x86__64%20%7C%20aarch64__cortex--a53%20%7C%20aarch64__generic-informational)](#)
 
 *基于 LuCI 原生 CSS 变量设计，无缝自适应明暗主题；前后端采用现代架构（客户端 JS 渲染 + ucode 后端），杜绝假状态与多余开销。*
 
@@ -28,33 +28,47 @@
 
 ## ⚡ 快速安装
 
-根据系统包管理器格式选择安装指令（菜单位于 **网络存储 (NAS) → chfs 文件共享**）：
+Release 资产按架构分目录，先按下表确认自己该取哪个目录里的包
+（菜单位于 **网络存储 (NAS) → chfs 文件共享**）：
+
+| 目录 | 适用设备 | 典型机型 |
+|------|----------|----------|
+| `x86_64/` | x86_64 软路由 / 虚拟机 | x86/64 目标、PVE / ESXi 虚拟机 |
+| `aarch64_cortex-a53/` | MT798x（Filogic）等 64 位 ARM 路由 | H5000M、MT6000、BPI-R3 等 mediatek/filogic |
+| `aarch64_generic/` | 通用 ARMv8 | armsr/armv8、RK35xx、多数通用 ARM 固件 |
+| `all/` | 架构无关 | LuCI 界面与简体中文语言包，任意设备通用 |
+
+> 目录名即 OpenWrt 的包架构名。设备上可用 `opkg print-architecture`（ipk）
+> 或 `apk --print-arch`（apk）核对。
 
 ### 方式 A：apk 系统 (ImmortalWrt / OpenWrt SNAPSHOT)
 
 ```sh
-apk add --allow-untrusted ./chfs-3.1-r1.apk
-apk add --allow-untrusted ./luci-app-chfs-1.0.0-r1.apk
-apk add --allow-untrusted ./luci-i18n-chfs-zh-cn-*.apk
+# 以 x86_64 为例；aarch64_cortex-a53 / aarch64_generic 请换成对应目录
+apk add --allow-untrusted ./x86_64/chfs-3.1-r1_x86_64.apk
+apk add --allow-untrusted ./all/luci-app-chfs-1.0.0-r6_all.apk
+apk add --allow-untrusted ./all/luci-i18n-chfs-zh-cn-1.0.0-r6_all.apk
 
 # 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 /etc/init.d/rpcd reload
-
 ```
 
 ### 方式 B：ipk 系统 (OpenWrt 24.10.x)
 
 ```sh
-opkg install ./chfs-3.1-r1.ipk
-opkg install ./luci-app-chfs-1.0.0-r1.ipk
-opkg install ./luci-i18n-chfs-zh-cn-*.ipk
+# 以 x86_64 为例；aarch64_cortex-a53 / aarch64_generic 请换成对应目录
+opkg install ./x86_64/chfs_3.1-1_x86_64.ipk
+opkg install ./all/luci-app-chfs_1.0.0-6_all.ipk
+opkg install ./all/luci-i18n-chfs-zh-cn_1.0.0-6_all.ipk
 
 # 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 /etc/init.d/rpcd reload
-
 ```
+
+> 包管理器按包内控制信息识别包，与文件名无关，因此重命名后的
+> `<name>-<version>_<arch>.apk` / `<name>_<version>_<arch>.ipk` 可直接安装。
 
 ---
 
@@ -140,8 +154,8 @@ graph TD
 ```
 .
 ├── .github/workflows/
-│   ├── build.yml                         # 云编译：apk/ipk × arm64/amd64 四矩阵构建
-│   └── release.yml                       # 手动工作流：向已有 Release 追加内核二进制资产
+│   ├── build.yml                         # 云编译：apk/ipk × 三架构六矩阵构建 + 发布
+│   └── release.yml                       # 手动工作流：向已有 Release 补发内核二进制
 ├── chfs/                                 # chfs 二进制包封装
 │   ├── Makefile                          # 构建逻辑（优先预置，回退上游）
 │   ├── extract-bin.sh                    # 二进制解压与规范化清洗
@@ -150,7 +164,9 @@ graph TD
 │       ├── SHA256SUMS                    # 校验值列表
 │       ├── arm64/chfs                    # 对应 aarch64
 │       └── amd64/chfs                    # 对应 x86_64
-├── tools/fetch-chfs.py                   # 自动化抓取上游二进制并同步清单
+├── tools/
+│   ├── fetch-chfs.py                     # 自动化抓取上游二进制并同步清单
+│   └── package-release.py                # 产物重命名 / SHA256SUMS / manifest / 发布说明
 └── luci-app-chfs/                        # LuCI 现代架构应用源码
     ├── Makefile
     ├── htdocs/luci-static/resources/view/chfs/
@@ -191,6 +207,50 @@ make package/luci-app-chfs/compile V=s \
 * **关于 `po2lmo**`：`luci-base/src/Makefile` 内嵌 `contrib/lemon.c`，无需宿主机环境预装 lemon 即可编译。产物存放于 `staging_dir/hostpkg/bin/`。云编译环境会自动向 `staging_dir/host/bin/` 创建软链接以兼容 `luci.mk`。
 * **跳过上游下载的正确姿势**：不可设置 `PKG_SKIP_DOWNLOAD`（会被 `include/package.mk` 覆盖），正确方式是在预置文件命中时将 `PKG_SOURCE_URL` **置空**。
 * **上游连接规范**：上游 `iscute.cn` 的 HTTPS 证书长期过期，必须使用 `http://` 避免触发 SSL 握手阻断。
+
+### 云编译矩阵
+
+`build.yml` 用六个并行 job 覆盖「三架构 × 双格式」：
+
+| 包格式 | SDK | 目标 target | 包架构 |
+|--------|-----|-------------|--------|
+| apk | ImmortalWrt SNAPSHOT | `x86/64` | `x86_64` |
+| apk | ImmortalWrt SNAPSHOT | `mediatek/filogic` | `aarch64_cortex-a53` |
+| apk | ImmortalWrt SNAPSHOT | `armsr/armv8` | `aarch64_generic` |
+| ipk | OpenWrt 24.10.5 | `x86/64` | `x86_64` |
+| ipk | OpenWrt 24.10.5 | `mediatek/filogic` | `aarch64_cortex-a53` |
+| ipk | OpenWrt 24.10.5 | `armsr/armv8` | `aarch64_generic` |
+
+四个关键设计：
+
+1. **架构不靠猜**：`defconfig` 后从 `.config` 读出 `CONFIG_TARGET_ARCH_PACKAGES`
+   并与矩阵声明比对，不一致立即失败 —— target 改名或选错 target 时不会静默产出错误架构的包。
+2. **架构无关包只编一次**：`luci-app-chfs` 与 `luci-i18n-chfs-zh-cn` 是
+   `LUCI_PKGARCH:=all`，三架构产物完全一致，故只在每种格式的一个 job 里编译；
+   依赖的 `luci-base` host 工具（`po2lmo` / `jsmin`）也随之只构建一次。
+3. **SDK 与 luci 源码带缓存**：稳定版 SDK 永久命中缓存，ImmortalWrt SNAPSHOT
+   按 UTC 日期命中（snapshot 每日变化，不能长期复用旧包）。
+4. **产物在 job 内即重命名**：apk 的文件名不含架构，三个架构 job 会产出同名
+   `chfs-3.1-r1.apk`，不区分就无法在同一个 Release 中共存。
+
+### Release 资产结构
+
+发布时由 `tools/package-release.py finalize` 统一汇总，资产按架构分目录：
+
+```
+v1.0.1/
+├── x86_64/                 chfs-3.1-r1_x86_64.apk / chfs_3.1-1_x86_64.ipk
+├── aarch64_cortex-a53/     chfs-3.1-r1_aarch64_cortex-a53.apk / chfs_3.1-1_*.ipk
+├── aarch64_generic/        chfs-3.1-r1_aarch64_generic.apk / chfs_3.1-1_*.ipk
+├── all/                    luci-app-chfs + luci-i18n-chfs-zh-cn（apk / ipk）
+├── chfs-linux-arm64-3.1    内核二进制（LuCI「一键下载内核」的目标）
+├── chfs-linux-amd64-3.1
+├── SHA256SUMS              全部资产的校验值
+└── manifest.json           机器可读清单（包名 / 版本 / 架构 / 大小 / SHA256）
+```
+
+发布流程同时做三件事：校验预置二进制（ELF 魔数 + `e_machine` + SHA256SUMS）、
+生成发布说明、清理该 tag 下不属于本次产出的旧资产（可用 `prune_assets` 关闭）。
 
 ---
 

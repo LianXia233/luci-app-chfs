@@ -1,5 +1,34 @@
 name: Build Packages
 
+# ---------------------------------------------------------------------------
+# 云编译：三架构 × 双包格式矩阵
+#
+#   arch  : x86_64 / aarch64_cortex-a53 / aarch64_generic
+#   format: apk (ImmortalWrt SNAPSHOT SDK) / ipk (OpenWrt 24.10.5 SDK)
+#
+# 设计要点
+#   1. luci-app-chfs 与 luci-i18n 是 LUCI_PKGARCH:=all 的架构无关包,
+#      在三个架构下产物完全一致, 故只在每种格式的一个 job 里编译一次
+#      (build_luci: true), 其余 job 只编译 chfs 二进制包。
+#      同理 luci-base 的 host 工具 (po2lmo / jsmin) 也只在这一处构建,
+#      六个 job 里省去四次重复编译。
+#   2. SDK 压缩包与 luci 源码按 key 缓存: 稳定版 SDK 永久命中,
+#      ImmortalWrt SNAPSHOT 按 UTC 日期命中 (snapshot 内容每日变化,
+#      不能长期复用旧包)。
+#   3. 包架构不再硬编码信任: defconfig 后从 .config 读出
+#      CONFIG_TARGET_ARCH_PACKAGES 并与矩阵声明比对, 不一致直接失败,
+#      避免 target 改名或选错 target 导致产出错误架构的包。
+#   4. 产物在 job 内即按 <name>-<version>_<arch>.<ext> 规范重命名,
+#      使 apk 这种"文件名不含架构"的格式也能在 Release 中区分。
+#
+# 触发
+#   push main / tag v*     : 构建 (tag 时自动发布 Release)
+#   pull_request           : 仅构建
+#   workflow_dispatch      : 可选指定 release_tag 发布到已有或新 tag
+#
+# chfs 二进制不实时下载: 仓库内 chfs/bin/<arch>/chfs 已预置并带 SHA256SUMS。
+# ---------------------------------------------------------------------------
+
 on:
   push:
     branches: [ main ]
@@ -12,6 +41,16 @@ on:
         description: '发布 Tag（留空则只构建不发布）'
         required: false
         default: ''
+      publish_kernel:
+        description: '同时发布 chfs 内核二进制（设备端一键下载源依赖它）'
+        required: false
+        type: boolean
+        default: true
+      prune_assets:
+        description: '发布时清理该 Tag 下不属于本次产出的旧资产'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -22,13 +61,6 @@ env:
   LUCI_REF: master
 
 jobs:
-  # ---------------------------------------------------------------
-  # 编译矩阵：同一份源码在不同 SDK 下分别产出 apk / ipk
-  #   apk -> ImmortalWrt SNAPSHOT SDK（apk-tools 3.x，gcc-14.4.0）
-  #   ipk -> OpenWrt 24.10.5 SDK（opkg / Packages.gz，gcc-13.3.0）
-  #
-  # chfs 二进制不实时下载：仓库内 chfs/bin/<arch>/chfs 已预置。
-  # ---------------------------------------------------------------------------
   build:
     name: ${{ matrix.format }} / ${{ matrix.arch }} / ${{ matrix.sdk_name }}
     runs-on: ubuntu-latest
@@ -36,7 +68,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # --- apk：ImmortalWrt SNAPSHOT（与 ImmortalWrt 设备一致） ---
+          # --- apk：ImmortalWrt SNAPSHOT（apk-tools 3.x，gcc-14.4.0） ---
           - format: apk
             sdk_name: immortalwrt-snapshot
             sdk_base: https://downloads.immortalwrt.org/snapshots/targets
@@ -44,6 +76,18 @@ jobs:
             target: mediatek/filogic
             arch: aarch64_cortex-a53
             chfs_bin: arm64
+            build_luci: false
+            sdk_cache: daily
+
+          - format: apk
+            sdk_name: immortalwrt-snapshot
+            sdk_base: https://downloads.immortalwrt.org/snapshots/targets
+            sdk_file: immortalwrt-sdk-armsr-armv8_gcc-14.4.0_musl.Linux-x86_64.tar.zst
+            target: armsr/armv8
+            arch: aarch64_generic
+            chfs_bin: arm64
+            build_luci: true
+            sdk_cache: daily
 
           - format: apk
             sdk_name: immortalwrt-snapshot
@@ -52,8 +96,10 @@ jobs:
             target: x86/64
             arch: x86_64
             chfs_bin: amd64
+            build_luci: false
+            sdk_cache: daily
 
-          # --- ipk：OpenWrt 24.10（稳定版，opkg） ---
+          # --- ipk：OpenWrt 24.10.5（稳定版，opkg / Packages.gz） ---
           - format: ipk
             sdk_name: openwrt-24.10.5
             sdk_base: https://downloads.openwrt.org/releases/24.10.5/targets
@@ -61,6 +107,18 @@ jobs:
             target: mediatek/filogic
             arch: aarch64_cortex-a53
             chfs_bin: arm64
+            build_luci: false
+            sdk_cache: fixed
+
+          - format: ipk
+            sdk_name: openwrt-24.10.5
+            sdk_base: https://downloads.openwrt.org/releases/24.10.5/targets
+            sdk_file: openwrt-sdk-24.10.5-armsr-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            target: armsr/armv8
+            arch: aarch64_generic
+            chfs_bin: arm64
+            build_luci: true
+            sdk_cache: fixed
 
           - format: ipk
             sdk_name: openwrt-24.10.5
@@ -69,67 +127,131 @@ jobs:
             target: x86/64
             arch: x86_64
             chfs_bin: amd64
+            build_luci: false
+            sdk_cache: fixed
 
     steps:
       - name: 检出源码
         uses: actions/checkout@v4
 
+      # SNAPSHOT SDK 内容每天变化, 缓存 key 必须带日期, 否则会长期复用旧包
+      - name: 计算缓存日期
+        id: day
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
       - name: 安装构建依赖
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential clang flex bison g++ gawk \
-            gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
-            python3 rsync unzip zlib1g-dev file wget jq zstd xz-utils
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential flex bison gawk gettext git libncurses-dev \
+            libssl-dev python3 rsync unzip zlib1g-dev file wget zstd xz-utils
 
+      # 预置二进制必须同时通过三重校验: 非空 -> ELF 魔数 -> e_machine -> SHA256SUMS
+      # 任何一项不通过都直接失败, 避免把错误架构的文件打进包里
       - name: 校验预置二进制
         run: |
           set -e
-          BIN="chfs/bin/${{ matrix.chfs_bin }}/chfs"
-          echo "期望路径: $BIN"
-          test -s "$BIN" || { echo "::error::缺少预置二进制 $BIN"; ls -R chfs/bin || true; exit 1; }
-          echo "大小: $(stat -c%s "$BIN") 字节"
-          head -c4 "$BIN" | od -An -tx1 | grep -q '7f 45 4c 46' \
-            || { echo "::error::$BIN 不是 ELF 文件"; exit 1; }
-          echo "ELF 校验通过"
+          ARCH_DIR="${{ matrix.chfs_bin }}"
+          case "$ARCH_DIR" in
+            arm64) WANT=183 ;;   # EM_AARCH64
+            amd64) WANT=62  ;;   # EM_X86_64
+            *) echo "::error::未定义的 chfs 架构目录 $ARCH_DIR"; exit 1 ;;
+          esac
+          BIN="chfs/bin/$ARCH_DIR/chfs"
 
-      - name: 下载并解压 SDK
+          test -s "$BIN" || { echo "::error::缺少预置二进制 $BIN"; ls -R chfs/bin || true; exit 1; }
+
+          magic=$(od -An -tx1 -N4 "$BIN" | tr -d ' \n')
+          [ "$magic" = "7f454c46" ] || { echo "::error::$BIN 不是 ELF 文件 (magic=$magic)"; exit 1; }
+
+          machine=$(od -An -tu1 -j18 -N2 "$BIN" | awk '{print $1 + $2 * 256}')
+          [ "$machine" = "$WANT" ] || { echo "::error::$BIN 架构不匹配: 期望 e_machine=$WANT, 实际 $machine"; exit 1; }
+
+          # 与 chfs/bin/SHA256SUMS 比对, 确认入库二进制未被替换
+          want=$(awk -v a="$ARCH_DIR" '$1 ~ /^[0-9a-fA-F]{64}$/ && $2 == a {print $1; exit}' chfs/bin/SHA256SUMS)
+          [ -n "$want" ] || { echo "::error::SHA256SUMS 中缺少 $ARCH_DIR 条目"; exit 1; }
+          actual=$(sha256sum "$BIN" | cut -d' ' -f1)
+          [ "$actual" = "$want" ] || { echo "::error::$ARCH_DIR 校验值不一致: 清单 $want / 实际 $actual"; exit 1; }
+
+          echo "OK  $BIN  e_machine=$machine  大小=$(stat -c%s "$BIN")  sha256=$actual"
+
+      # actions/cache 的 restore 发生在本步骤、save 发生在 job 结束后，
+      # 因此必须先恢复再判断是否下载，顺序颠倒会导致永远命中不了缓存。
+      - name: 恢复 SDK 缓存
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: sdk-cache/${{ matrix.sdk_file }}
+          key: sdk-${{ matrix.sdk_file }}-${{ matrix.sdk_cache == 'daily' && steps.day.outputs.date || 'fixed' }}
+
+      - name: 取 SDK（缓存未命中则下载）
         run: |
           set -e
-          URL="${{ matrix.sdk_base }}/${{ matrix.target }}/${{ matrix.sdk_file }}"
-          echo "SDK: $URL"
-          wget -q "$URL" -O /tmp/sdk.tar.zst
-          test -s /tmp/sdk.tar.zst
+          mkdir -p sdk-cache
+          CACHED="sdk-cache/${{ matrix.sdk_file }}"
+          if [ -s "$CACHED" ]; then
+            echo "命中缓存: $CACHED ($(stat -c%s "$CACHED") 字节)"
+            cp "$CACHED" /tmp/sdk.tar.zst
+          else
+            URL="${{ matrix.sdk_base }}/${{ matrix.target }}/${{ matrix.sdk_file }}"
+            echo "下载 SDK: $URL"
+            for i in 1 2 3; do
+              wget -q --tries=1 --timeout=60 "$URL" -O /tmp/sdk.tar.zst && [ -s /tmp/sdk.tar.zst ] && break
+              echo "第 $i 次下载失败，重试..."
+              sleep 5
+            done
+            test -s /tmp/sdk.tar.zst || { echo "::error::SDK 下载失败"; exit 1; }
+            # 写回缓存路径，job 结束后由 actions/cache 保存
+            mkdir -p sdk-cache
+            cp /tmp/sdk.tar.zst "$CACHED"
+          fi
+
+      - name: 解压 SDK
+        run: |
+          set -e
           mkdir -p sdk
           tar --use-compress-program=unzstd -xf /tmp/sdk.tar.zst -C sdk --strip-components=1
+          rm -f /tmp/sdk.tar.zst
+          test -d sdk/staging_dir
           echo "--- SDK 顶层 ---"
           ls sdk | head -20
-          test -d sdk/staging_dir
 
       # luci.mk 与 luci-base host 工具 (po2lmo / jsmin) 的源码都来自 luci 仓库。
-      # luci-base 的 Host/Compile 会就地用 cc 编译自带 contrib/lemon.c，
-      # 再由 lib/plural_formula.y 生成 plural_formula.c/.h，无需外部 lemon。
-      - name: 获取 luci feeds
+      # master 每日变化，缓存 key 带 UTC 日期，同一天的多个 job 共享一次下载。
+      - name: 恢复 luci 源码缓存
+        id: luci-cache
+        uses: actions/cache@v4
+        with:
+          path: luci-cache/luci.tgz
+          key: luci-${{ env.LUCI_REPO }}-${{ env.LUCI_REF }}-${{ steps.day.outputs.date }}
+
+      - name: 取 luci 源码（缓存未命中则下载）
+        run: |
+          set -e
+          mkdir -p luci-cache
+          if [ -s luci-cache/luci.tgz ]; then
+            echo "命中缓存: luci-cache/luci.tgz ($(stat -c%s luci-cache/luci.tgz) 字节)"
+          else
+            for i in 1 2 3; do
+              if curl -fsSL --max-time 300 \
+                   "https://codeload.github.com/${LUCI_REPO}/tar.gz/refs/heads/${LUCI_REF}" \
+                   -o luci-cache/luci.tgz && [ -s luci-cache/luci.tgz ]; then
+                break
+              fi
+              echo "第 $i 次拉取失败，重试..."
+              rm -f luci-cache/luci.tgz
+              sleep 5
+            done
+          fi
+          test -s luci-cache/luci.tgz || { echo "::error::luci 源码下载失败"; exit 1; }
+
+      - name: 解包 luci 源码
         run: |
           set -e
           mkdir -p luci-src
-          for i in 1 2 3; do
-            if curl -fsSL --max-time 300 \
-                 "https://codeload.github.com/${LUCI_REPO}/tar.gz/refs/heads/${LUCI_REF}" \
-                 -o /tmp/luci.tgz && [ -s /tmp/luci.tgz ]; then
-              break
-            fi
-            echo "第 $i 次拉取失败，重试..."
-            sleep 5
-          done
-          test -s /tmp/luci.tgz
-          echo "luci tarball: $(stat -c%s /tmp/luci.tgz) 字节"
-          tar -xzf /tmp/luci.tgz -C luci-src --strip-components=1
+          tar -xzf luci-cache/luci.tgz -C luci-src --strip-components=1
           test -f luci-src/luci.mk
-          test -f luci-src/modules/luci-base/src/Makefile
           test -f luci-src/modules/luci-base/src/contrib/lemon.c
-          test -f luci-src/modules/luci-base/src/lib/plural_formula.y
-          echo "--- luci-base/src ---"
-          ls luci-src/modules/luci-base/src
 
       - name: 放入包源码
         run: |
@@ -166,30 +288,38 @@ jobs:
           mkdir -p package/luci-app-chfs
           cp -r ../luci-app-chfs/. package/luci-app-chfs/
 
-          echo "--- SDK 根 ---";        ls luci.mk LICENSE NOTICE
-          echo "--- feeds/luci ---";    ls feeds/luci
-          echo "--- luci-base/src ---"; ls package/luci-base/src
-          echo "--- chfs ---";          ls -R package/chfs | head -20
-          echo "--- luci-app-chfs ---"; ls package/luci-app-chfs
+          echo "--- 已放入 package ---"
+          ls package
 
       # 必须在源码就位后、任何 make 目标之前生成 .config。
       # SDK 解压后没有 .config，直接 make 会走 toplevel.mk 的 .config 规则并弹出
       # menuconfig，在无 TTY 的 CI 中报错：
       #   Error opening terminal: unknown.
-      #   make[2]: *** [include/toplevel.mk:137: menuconfig] Error 1
-      #   make[1]: *** [include/toplevel.mk:95: .config] Error 2
-      - name: 生成默认配置
+      - name: 生成默认配置并探测包架构
         run: |
           set -e
           cd sdk
           make defconfig
           test -f .config
+
+          ARCH_PACKAGES=$(sed -n 's/^CONFIG_TARGET_ARCH_PACKAGES="\(.*\)"$/\1/p' .config | head -1)
+          echo "SDK 报告的包架构: ${ARCH_PACKAGES:-<未设置>}"
+          [ -n "$ARCH_PACKAGES" ] || { echo "::error::无法从 .config 读取 CONFIG_TARGET_ARCH_PACKAGES"; exit 1; }
+          echo "ARCH_PACKAGES=$ARCH_PACKAGES" >> "$GITHUB_ENV"
+
+          # 矩阵声明与 SDK 实测不一致时立即失败，防止产出错误架构的包
+          if [ "$ARCH_PACKAGES" != "${{ matrix.arch }}" ]; then
+            echo "::error::架构不一致：矩阵声明 ${{ matrix.arch }}，SDK 实测 $ARCH_PACKAGES"
+            exit 1
+          fi
+
           echo "--- 目标平台 ---"
           grep -E '^CONFIG_TARGET_(board|subtarget|arch)' .config || true
-          echo "--- 已识别相关包 ---"
-          grep -E '^CONFIG_PACKAGE_(luci-base|luci-app-chfs|chfs)=?' .config || echo "（未出现在 .config，host 构建不受影响）"
 
+      # 仅架构无关包（luci-app-chfs / luci-i18n）需要 po2lmo 与 jsmin，
+      # 且它们与 SDK 架构无关，故六种组合里只构建一次。
       - name: 构建 luci-base host 工具 (po2lmo / jsmin)
+        if: matrix.build_luci
         run: |
           set -e
           cd sdk
@@ -232,10 +362,25 @@ jobs:
           make package/chfs/compile V=s -j$(nproc)
 
       - name: 编译 luci-app-chfs
+        if: matrix.build_luci
         run: |
           set -e
           cd sdk
           make package/luci-app-chfs/compile V=s -j$(nproc)
+
+      # luci.mk 会为每个 po 文件额外 eval 出 luci-i18n-<pkg>-<lang> 包，
+      # 但它不是 package/luci-app-chfs/compile 的一部分，需单独触发。
+      # 目标是否存在因 luci.mk 版本而异，故先干跑判断。
+      - name: 编译 luci-i18n-chfs-zh-cn
+        if: matrix.build_luci
+        run: |
+          set -e
+          cd sdk
+          if make -n package/luci-i18n-chfs-zh-cn/compile >/dev/null 2>&1; then
+            make package/luci-i18n-chfs-zh-cn/compile V=s -j$(nproc)
+          else
+            echo "::warning::本 SDK 的 luci.mk 未定义 luci-i18n-chfs-zh-cn 目标，跳过"
+          fi
 
       - name: 展示失败日志
         if: failure()
@@ -250,22 +395,35 @@ jobs:
             tail -100 "$f"
           done
 
-      - name: 收集产物
+      # 产物在此处即完成重命名: apk 的文件名本身不含架构,
+      # 三个架构 job 会产出同名 chfs-3.1-r1.apk, 不区分就无法共存。
+      - name: 归档产物
         run: |
           set -e
-          mkdir -p out
-          find sdk/bin/packages -type f \( -name '*chfs*.apk' -o -name '*chfs*.ipk' \) \
-            -exec cp -v {} out/ \; || true
-          echo "--- 产物 ---"
-          ls -la out/
-          test "$(ls -A out)" || { echo "::error::没有产出任何包"; exit 1; }
+          python3 tools/package-release.py stage \
+            --src sdk/bin/packages \
+            --format "${{ matrix.format }}" \
+            --arch "${{ env.ARCH_PACKAGES }}" \
+            --out dist
+          echo "--- 归档结果 ---"
+          find dist -type f | sort
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.format }}-${{ matrix.arch }}
-          path: out/*
+          name: pkg-${{ matrix.format }}-${{ matrix.arch }}
+          path: dist/**
           if-no-files-found: error
+
+      - name: 输出构建摘要
+        run: |
+          {
+            echo "## ${{ matrix.format }} / ${{ matrix.arch }}"
+            echo ""
+            echo "| 包 | 版本 | 架构 | 大小 |"
+            echo "|---|---|---|---|"
+            python3 tools/package-release.py list --src dist
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------
   # 发布：仅在打 tag 或手动指定 release_tag 时执行
@@ -275,27 +433,93 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
       - name: 下载全部产物
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
 
-      - name: 整理文件
+      - name: 准备内核二进制
+        if: inputs.publish_kernel != 'false'
         run: |
+          set -e
           mkdir -p release
-          find artifacts -type f \( -name '*.apk' -o -name '*.ipk' \) -exec cp -v {} release/ \;
-          echo "--- 待发布 ---"
+
+          # 复用主流程的校验口径: ELF 魔数 + e_machine + SHA256SUMS
+          check_elf() {
+            dir="$1"; want="$2"; bin="chfs/bin/$dir/chfs"
+            test -s "$bin" || { echo "::error::$bin 不存在或为空"; exit 1; }
+            magic=$(od -An -tx1 -N4 "$bin" | tr -d ' \n')
+            [ "$magic" = "7f454c46" ] || { echo "::error::$bin 不是 ELF"; exit 1; }
+            machine=$(od -An -tu1 -j18 -N2 "$bin" | awk '{print $1 + $2 * 256}')
+            [ "$machine" = "$want" ] || { echo "::error::$bin e_machine=$machine, 期望 $want"; exit 1; }
+            sum=$(sha256sum "$bin" | cut -d' ' -f1)
+            want_sum=$(awk -v a="$dir" '$1 ~ /^[0-9a-fA-F]{64}$/ && $2 == a {print $1; exit}' chfs/bin/SHA256SUMS)
+            [ "$sum" = "$want_sum" ] || { echo "::error::$dir 校验值不一致"; exit 1; }
+            echo "OK  $dir  e_machine=$machine  sha256=$sum"
+          }
+
+          check_elf arm64 183
+          check_elf amd64 62
+
+          chmod 0755 chfs/bin/arm64/chfs chfs/bin/amd64/chfs
+          cp chfs/bin/arm64/chfs release/chfs-linux-arm64-3.1
+          cp chfs/bin/amd64/chfs release/chfs-linux-amd64-3.1
+
+      - name: 汇总资产并生成发布说明
+        run: |
+          set -e
+          python3 tools/package-release.py finalize \
+            --src artifacts \
+            --out release \
+            --notes notes/release-notes.md \
+            --tag "${{ inputs.release_tag || github.ref_name }}"
+          echo "--- 待发布资产 ---"
           ls -la release/
-          test "$(ls -A release)" || { echo "::error::无可发布文件"; exit 1; }
+
+      - name: 清理旧资产
+        if: inputs.prune_assets != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+
+          # 本次产出的资产名集合（白名单，含架构目录前缀，如 x86_64/chfs-3.1-r1_x86_64.apk）
+          (cd release && find . -type f -printf '%P\n') | sort > expected.txt
+
+          # 该 tag 下已存在的资产
+          gh release view "$TAG" --json assets --jq '.assets[].name' > existing.txt 2>/dev/null || true
+          [ -s existing.txt ] || { echo "Release $TAG 尚无资产或不存在，跳过清理"; exit 0; }
+
+          echo "--- 本次资产 ---"; cat expected.txt
+          echo "--- 现有资产 ---"; cat existing.txt
+
+          deleted=0
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            grep -Fxq "$name" expected.txt && continue
+            echo "删除旧资产: $name"
+            gh release delete-asset "$TAG" "$name" -y || echo "::warning::删除失败: $name"
+            deleted=$((deleted + 1))
+          done < existing.txt
+
+          echo "共清理 $deleted 个旧资产"
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           name: ${{ inputs.release_tag || github.ref_name }}
+          body_path: notes/release-notes.md
           files: release/*
-          generate_release_notes: true
+          overwrite_files: true
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
