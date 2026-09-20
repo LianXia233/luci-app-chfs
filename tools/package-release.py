@@ -57,9 +57,10 @@ IPK_NAME_RE = re.compile(r"^(?P<name>[^_]+)_(?P<version>[^_]+)_(?P<arch>.+)\.ipk
 #   OpenWrt SDK 产出的 apk 命名可能是：
 #     <name>-<version>.apk
 #     <name>-<version>_<arch>.apk
-#   由于 name 与 version 都可能包含连字符（luci-app-chfs / 1.0.0-r6），
-#   唯一可靠的分隔符是「版本后紧跟的下划线」或「.apk 后缀」。
-#   因此先剥掉 .apk，再按最后一个下划线拆分。
+#   其中 name/version 都可能含连字符，arch 可能含下划线（aarch64_cortex-a53）。
+#   确定性拆分顺序：
+#     1. 按最后一个下划线拆出 arch 与 <name>-<version>
+#     2. 对 <name>-<version> 从右往左找第一个以数字开头的片段作为 version 起点
 APK_NAME_RE = re.compile(
     r"^(?P<base>.+?)(?:_(?P<arch>[^_]+))?\.apk$"
 )
@@ -173,17 +174,33 @@ def read_meta(path):
         info = apk_pkginfo(path)
         if info and info.get("pkgname") and info.get("pkgver"):
             return info["pkgname"], info["pkgver"], (info.get("arch") or "unknown")
-        # 回退：按文件名推断。OpenWrt SDK 的 apk 命名形如：
-        #   <name>-<version>.apk 或 <name>-<version>_<arch>.apk
-        # name/version 都可能含连字符，唯一可靠分隔是「最后一个下划线」与「.apk」。
-        m = APK_NAME_RE.match(base)
-        if not m:
-            raise ValueError("无法识别 apk 元数据: %s" % base)
-        arch = m.group("arch") or "unknown"
-        name_ver = m.group("base")
+        # 确定性拆分（不用正则，避免 arch 含下划线时被截断）：
+        #   OpenWrt SDK 原始文件名形如 <name>-<version>.apk，
+        #   本脚本 stage 后追加 _<arch>.apk，其中 arch 可能含下划线
+        #   （x86_64 / aarch64_cortex-a53 / aarch64_generic / all）。
+        #   因此先按已知 arch 后缀反拆，再处理 <name>-<version>。
+        stem = base[:-4] if base.endswith(".apk") else base
+        arch = "unknown"
+        name_ver = stem
+        for known in ("aarch64_cortex-a53", "aarch64_generic", "x86_64", "all", "noarch"):
+            suffix = "_" + known
+            if stem.endswith(suffix):
+                arch = known
+                name_ver = stem[: -len(suffix)]
+                break
         if "-" not in name_ver:
             raise ValueError("apk 文件名缺少版本分隔符 '-': %s" % base)
-        name, version = name_ver.rsplit("-", 1)
+        parts = name_ver.split("-")
+        version_idx = None
+        for i in range(len(parts) - 1, -1, -1):
+            if parts[i] and parts[i][0].isdigit():
+                version_idx = i
+                break
+        if version_idx is None:
+            name, version = name_ver.rsplit("-", 1)
+        else:
+            name = "-".join(parts[:version_idx]) if version_idx > 0 else ""
+            version = "-".join(parts[version_idx:])
         return name, version, arch
 
     if ext == "ipk":
