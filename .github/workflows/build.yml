@@ -444,6 +444,21 @@ jobs:
         with:
           path: artifacts
 
+      - name: 解包产物到 release 目录
+        run: |
+          set -e
+          mkdir -p release
+          echo "=== artifacts 目录结构 ==="
+          find artifacts -type f | sort
+          # 将 artifacts 下的所有 zip 解压并扁平化复制到 release/
+          find artifacts -name '*.zip' -exec unzip -q {} -d tmp_extract \;
+          echo "=== 解压后待复制文件 ==="
+          find tmp_extract -type f \( -name '*.apk' -o -name '*.ipk' \) | sort
+          find tmp_extract -type f \( -name '*.apk' -o -name '*.ipk' \) -exec cp -v {} release/ \;
+          rm -rf tmp_extract
+          echo "=== release 目录结构 ==="
+          find release -type f | sort
+
       - name: 准备内核二进制
         if: inputs.publish_kernel != 'false'
         run: |
@@ -517,7 +532,7 @@ jobs:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           name: ${{ inputs.release_tag || github.ref_name }}
           body_path: notes/release-notes.md
-          files: release/*
+          files: release/**
           overwrite_files: true
           draft: false
           prerelease: false
