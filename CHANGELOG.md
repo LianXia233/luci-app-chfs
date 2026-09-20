@@ -46,6 +46,25 @@
 - **发布时清理旧资产**：删除该 tag 下不属于本次产出的历史文件（可用
   `prune_assets` 关闭），避免资产随版本累积。
 
+### 修复
+
+- **Release 缺安装包**：`softprops/action-gh-release` 的 `files` 由 `release/*`
+  改为 `release/**`。资产位于架构子目录，`release/*` 的 glob 不递归，
+  导致 Release 里只有根目录的内核二进制与清单，10 个安装包全部丢失。
+- **Release job 误判产物形态**：`actions/download-artifact@v4` 会自动解压，
+  `artifacts/` 下并无 zip；按 zip 解包的写法会因 `find` 目标目录不存在而中断
+  （`find: 'tmp_extract': No such file or directory`）。现改为只列目录、
+  直接交给 `finalize` 递归扫描。
+- **apk 侧 LuCI 包归属错误**：apk 打包会把 `LUCI_PKGARCH:=all` 的包标成构建
+  目标架构（实测 `aarch64_generic`），而 ipk 会正确写 `Architecture: all`。
+  该类包只在 `build_luci` 的那个 job 编译一次，按包内自报架构归档会使
+  `x86_64` 与 `aarch64_cortex-a53` 的用户在 `all/` 下取不到界面包。
+  现于 `stage` 与 `finalize` 两处统一归一为 `all/`。
+- **`stage` 与 `finalize` 口径不一致**：`stage` 的输出目录此前固定取 `--arch`
+  参数，而文件名用归一化后的架构，会出现
+  `apk/aarch64_generic/luci-app-chfs-1.0.0-r6_all.apk` 这类自相矛盾的组合。
+  现改为按归一化架构分目录，两处口径完全一致。
+
 ### 发布资产
 
 | 路径 | 说明 |
@@ -54,7 +73,7 @@
 | `aarch64_cortex-a53/chfs-3.1-r1_aarch64_cortex-a53.apk` / `.ipk` | chfs 本体（Filogic） |
 | `aarch64_generic/chfs-3.1-r1_aarch64_generic.apk` / `.ipk` | chfs 本体（通用 ARMv8） |
 | `all/luci-app-chfs-1.0.0-r6_all.apk` / `.ipk` | LuCI 应用（架构无关） |
-| `all/luci-i18n-chfs-zh-cn-1.0.0-r6_all.apk` / `.ipk` | 简体中文翻译 |
+| `all/luci-i18n-chfs-zh-cn-0_all.apk` / `.ipk` | 简体中文翻译 |
 | `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1` | 内核二进制 |
 | `SHA256SUMS` / `manifest.json` | 校验值与机器可读清单 |
 

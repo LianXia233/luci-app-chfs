@@ -50,6 +50,25 @@ FORMAT_DIST = {
 # 架构无关包（LUCI_PKGARCH=all）在任何架构下内容一致，Release 中只保留一份
 ARCH_ALL = ("all", "noarch")
 
+# LUCI_PKGARCH:=all 的 LuCI 界面与语言包。
+#
+# ipk 打包会正确写入 Architecture: all，但 apk 打包会把这类纯脚本包标成构建目标
+# 架构（实测 ImmortalWrt SNAPSHOT 产出 arch=aarch64_generic）。这些包只在
+# build_luci 的那个 job 里构建一次，若按 apk 自报的架构归入 aarch64_generic/，
+# x86_64 与 aarch64_cortex-a53 的用户就会找不到界面包。
+# 它们的内容与 CPU 无关，故统一归一为 all/，让三种架构共用同一份。
+ARCH_INDEPENDENT = (
+    "luci-app-chfs",
+    "luci-i18n-chfs-zh-cn",
+)
+
+
+def normalize_arch(name, arch):
+    """把架构无关的包归一到 all；其余原样返回。"""
+    if name in ARCH_INDEPENDENT:
+        return "all"
+    return arch
+
 # 注意 arch 段本身含下划线（x86_64 / aarch64_cortex-a53），故只有 version 段禁止下划线，
 # 否则贪婪匹配会把 x86_64 切成 arch=64。
 IPK_NAME_RE = re.compile(r"^(?P<name>[^_]+)_(?P<version>[^_]+)_(?P<arch>.+)\.ipk$")
@@ -244,12 +263,11 @@ def cmd_stage(args):
         log("::error::%s 下没有找到任何 chfs 相关包" % src)
         return 1
 
-    outdir = os.path.join(args.out, args.format, args.arch)
-    os.makedirs(outdir, exist_ok=True)
-
     staged = []
     for path in packages:
         name, version, arch = read_meta(path)
+        # LuCI 界面/语言包与 CPU 无关，恒归 all；其余包沿用包内自报架构
+        arch = normalize_arch(name, arch)
         # apk 的 .PKGINFO 里一定有 arch；若读不到则回退为本次构建的目标架构
         if arch in ("unknown", ""):
             arch = args.arch
@@ -257,6 +275,10 @@ def cmd_stage(args):
             log("::error::%s 的架构 %s 与本次构建目标 %s 不符" % (path, arch, args.arch))
             return 1
 
+        # 目录按归一化后的架构划分，与 finalize 口径保持一致：
+        # 一个 job 因此可能同时产出 <format>/<目标架构>/ 与 <format>/all/ 两处。
+        outdir = os.path.join(args.out, args.format, arch)
+        os.makedirs(outdir, exist_ok=True)
         target = os.path.join(outdir, canonical_name(name, version, arch, args.format))
         with open(path, "rb") as fsrc, open(target, "wb") as fdst:
             fdst.write(fsrc.read())
@@ -390,6 +412,9 @@ def cmd_finalize(args):
     for path in iter_packages(src):
         name, version, arch = read_meta(path)
         package_format = "apk" if path.endswith(".apk") else "ipk"
+        # 与 stage 保持同一口径：LuCI 界面/语言包恒归 all/，
+        # 否则 apk 侧会被 aarch64_generic 独占，其他架构取不到界面。
+        arch = normalize_arch(name, arch)
         if arch in ("unknown", ""):
             log("::warning::无法判定 %s 的架构，按文件名保留" % os.path.basename(path))
             arch = "unknown"

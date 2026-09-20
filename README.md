@@ -47,7 +47,7 @@ Release 资产按架构分目录，先按下表确认自己该取哪个目录里
 # 以 x86_64 为例；aarch64_cortex-a53 / aarch64_generic 请换成对应目录
 apk add --allow-untrusted ./x86_64/chfs-3.1-r1_x86_64.apk
 apk add --allow-untrusted ./all/luci-app-chfs-1.0.0-r6_all.apk
-apk add --allow-untrusted ./all/luci-i18n-chfs-zh-cn-1.0.0-r6_all.apk
+apk add --allow-untrusted ./all/luci-i18n-chfs-zh-cn-0_all.apk
 
 # 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
@@ -58,9 +58,9 @@ rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 
 ```sh
 # 以 x86_64 为例；aarch64_cortex-a53 / aarch64_generic 请换成对应目录
-opkg install ./x86_64/chfs_3.1-1_x86_64.ipk
-opkg install ./all/luci-app-chfs_1.0.0-6_all.ipk
-opkg install ./all/luci-i18n-chfs-zh-cn_1.0.0-6_all.ipk
+opkg install ./x86_64/chfs_3.1-r1_x86_64.ipk
+opkg install ./all/luci-app-chfs_1.0.0-r6_all.ipk
+opkg install ./all/luci-i18n-chfs-zh-cn_0_all.ipk
 
 # 清除缓存并重载 RPC 服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
@@ -221,7 +221,7 @@ make package/luci-app-chfs/compile V=s \
 | ipk | OpenWrt 24.10.5 | `mediatek/filogic` | `aarch64_cortex-a53` |
 | ipk | OpenWrt 24.10.5 | `armsr/armv8` | `aarch64_generic` |
 
-四个关键设计：
+五个关键设计：
 
 1. **架构不靠猜**：`defconfig` 后从 `.config` 读出 `CONFIG_TARGET_ARCH_PACKAGES`
    并与矩阵声明比对，不一致立即失败 —— target 改名或选错 target 时不会静默产出错误架构的包。
@@ -232,6 +232,11 @@ make package/luci-app-chfs/compile V=s \
    按 UTC 日期命中（snapshot 每日变化，不能长期复用旧包）。
 4. **产物在 job 内即重命名**：apk 的文件名不含架构，三个架构 job 会产出同名
    `chfs-3.1-r1.apk`，不区分就无法在同一个 Release 中共存。
+5. **架构无关包强制归入 `all/`**：apk 打包会把 `LUCI_PKGARCH:=all` 的包标成
+   **构建目标架构**（实测 ImmortalWrt SNAPSHOT 产出 `arch = aarch64_generic`），
+   而 ipk 会正确写 `Architecture: all`。这类包只在 `build_luci` 的那个 job 编一次，
+   若照搬包内自报架构归档，`x86_64` 与 `aarch64_cortex-a53` 的用户就会拿不到界面包。
+   故 `package-release.py` 在 `stage` 与 `finalize` 两处按同一口径把它归一为 `all/`。
 
 ### Release 资产结构
 
@@ -239,15 +244,21 @@ make package/luci-app-chfs/compile V=s \
 
 ```
 v1.0.1/
-├── x86_64/                 chfs-3.1-r1_x86_64.apk / chfs_3.1-1_x86_64.ipk
-├── aarch64_cortex-a53/     chfs-3.1-r1_aarch64_cortex-a53.apk / chfs_3.1-1_*.ipk
-├── aarch64_generic/        chfs-3.1-r1_aarch64_generic.apk / chfs_3.1-1_*.ipk
-├── all/                    luci-app-chfs + luci-i18n-chfs-zh-cn（apk / ipk）
+├── x86_64/                 chfs-3.1-r1_x86_64.apk / chfs_3.1-r1_x86_64.ipk
+├── aarch64_cortex-a53/     chfs-3.1-r1_aarch64_cortex-a53.apk / chfs_3.1-r1_aarch64_cortex-a53.ipk
+├── aarch64_generic/        chfs-3.1-r1_aarch64_generic.apk / chfs_3.1-r1_aarch64_generic.ipk
+├── all/                    luci-app-chfs-1.0.0-r6_all.apk / luci-app-chfs_1.0.0-r6_all.ipk
+│                           luci-i18n-chfs-zh-cn-0_all.apk / luci-i18n-chfs-zh-cn_0_all.ipk
 ├── chfs-linux-arm64-3.1    内核二进制（LuCI「一键下载内核」的目标）
 ├── chfs-linux-amd64-3.1
 ├── SHA256SUMS              全部资产的校验值
 └── manifest.json           机器可读清单（包名 / 版本 / 架构 / 大小 / SHA256）
 ```
+
+> [!IMPORTANT]
+> 资产分布在**架构子目录**中，因此 `softprops/action-gh-release` 的 `files`
+> 必须写成 `release/**`。写成 `release/*` 时 glob 不递归，Release 里就只会出现
+> 根目录的内核二进制与清单，安装包全部丢失。
 
 发布流程同时做三件事：校验预置二进制（ELF 魔数 + `e_machine` + SHA256SUMS）、
 生成发布说明、清理该 tag 下不属于本次产出的旧资产（可用 `prune_assets` 关闭）。
