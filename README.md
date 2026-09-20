@@ -12,6 +12,8 @@
 
 *基于 LuCI 原生 CSS 变量设计，无缝自适应明暗主题；前后端采用现代架构（客户端 JS 渲染 + ucode 后端），杜绝假状态与多余开销。*
 
+<img src="docs/screenshots/01-settings.png" alt="chfs 服务设置界面" width="820">
+
 ---
 
 </div>
@@ -23,6 +25,36 @@
 - 📁 **精细化账户控制**：内置图形化账户管理，支持针对多路径粒度的权限划分（`禁止访问` / `只读` / `读写` / `完全控制`）。
 - 🌐 **原生 WebDAV 支持**：完整兼容 chfs 1.10+ 内置 WebDAV，状态页一键复制挂载链接。
 - 🛠️ **完整内核生命周期**：独立管理标签页，支持在线检测下载（多镜像代理白名单）与本地上传，提供 ELF 架构自动匹配、安装前自动备份与原子故障回滚。
+
+---
+
+## 界面预览
+
+截图取自 ImmortalWrt SNAPSHOT 实机（LuCI Master + Aurora 主题）。为便于公开，图中账户密码已掩码、设备管理地址已替换为示例值。
+
+### 服务设置
+
+服务控制与运行状态探测、监听端口、共享根目录、运行身份、匿名访问、IP 白名单、目录下载策略、文件删除方式、会话超时，以及操作日志与 HTTPS 证书路径。
+
+![服务设置](docs/screenshots/01-settings.png)
+
+### 账户与权限
+
+图形化账户管理，列出账户名、密码与默认权限；可针对具体子目录单独设定权限以覆盖默认值。
+
+![账户与权限](docs/screenshots/02-accounts.png)
+
+### 服务状态
+
+全部指标来自底层真实探测：进程信息（PID / 内存 / 程序文件 / 配置文件）、端口监听状态、WebDAV 端点探测（含 HTTP 状态码与访问地址），以及设备实际读取的 ini 配置全文。
+
+![服务状态](docs/screenshots/03-status.png)
+
+### 内核管理
+
+当前内核信息（设备架构、ELF `e_machine` 匹配结果、SHA256、预期版本）、一键检测下载源、手动上传、待安装文件与备份回滚。
+
+![内核管理](docs/screenshots/04-kernel.png)
 
 ---
 
@@ -167,6 +199,7 @@ graph TD
 ├── tools/
 │   ├── fetch-chfs.py                     # 自动化抓取上游二进制并同步清单
 │   └── package-release.py                # 产物重命名 / SHA256SUMS / manifest / 发布说明
+├── docs/screenshots/                     # README 界面预览图（ImmortalWrt 实机截取）
 └── luci-app-chfs/                        # LuCI 现代架构应用源码
     ├── Makefile
     ├── htdocs/luci-static/resources/view/chfs/
