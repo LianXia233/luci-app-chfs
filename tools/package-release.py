@@ -53,9 +53,16 @@ ARCH_ALL = ("all", "noarch")
 # 注意 arch 段本身含下划线（x86_64 / aarch64_cortex-a53），故只有 version 段禁止下划线，
 # 否则贪婪匹配会把 x86_64 切成 arch=64。
 IPK_NAME_RE = re.compile(r"^(?P<name>[^_]+)_(?P<version>[^_]+)_(?P<arch>.+)\.ipk$")
-# 末尾的 _<arch> 是本项目重命名后追加的，回退解析时一并识别
+# 文件名解析规则（仅在 .PKGINFO 失败时回退使用）：
+#   OpenWrt SDK 产出的 apk 命名可能是：
+#     <name>-<version>.apk
+#     <name>-<version>_<arch>.apk
+#   由于 name 与 version 都可能包含连字符（luci-app-chfs / 1.0.0-r6），
+#   唯一可靠的分隔符是「版本后紧跟的下划线」或「.apk 后缀」。
+#   因此先剥掉 .apk，再按最后一个下划线拆分。
 APK_NAME_RE = re.compile(
-    r"^(?P<name>.+)-(?P<version>\d[^-]*(?:-r\d+)?)(?:_(?P<arch>[^_]+))?\.apk$")
+    r"^(?P<base>.+?)(?:_(?P<arch>[^_]+))?\.apk$"
+)
 
 
 def log(msg):
@@ -166,10 +173,18 @@ def read_meta(path):
         info = apk_pkginfo(path)
         if info and info.get("pkgname") and info.get("pkgver"):
             return info["pkgname"], info["pkgver"], (info.get("arch") or "unknown")
+        # 回退：按文件名推断。OpenWrt SDK 的 apk 命名形如：
+        #   <name>-<version>.apk 或 <name>-<version>_<arch>.apk
+        # name/version 都可能含连字符，唯一可靠分隔是「最后一个下划线」与「.apk」。
         m = APK_NAME_RE.match(base)
-        if m:
-            return m.group("name"), m.group("version"), (m.group("arch") or "unknown")
-        raise ValueError("无法识别 apk 元数据: %s" % base)
+        if not m:
+            raise ValueError("无法识别 apk 元数据: %s" % base)
+        arch = m.group("arch") or "unknown"
+        name_ver = m.group("base")
+        if "-" not in name_ver:
+            raise ValueError("apk 文件名缺少版本分隔符 '-': %s" % base)
+        name, version = name_ver.rsplit("-", 1)
+        return name, version, arch
 
     if ext == "ipk":
         m = IPK_NAME_RE.match(base)
