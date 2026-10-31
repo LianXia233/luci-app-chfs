@@ -479,20 +479,31 @@
           </div>
         </div>
 
-        <!-- Tab 标签页选择导航（支持手机横向滑动手感与轻触） -->
-        <div class="bg-white/80 border-b border-slate-200/80 px-2 sm:px-6 flex overflow-x-auto gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold text-slate-600 custom-scrollbar py-2" style="-webkit-overflow-scrolling: touch;">
-          <button class="demo-tab-btn active px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-emerald-700 bg-emerald-100/80 border border-emerald-200 flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0" data-tab="settings">
-            <span>⚙️</span> 服务设置
-          </button>
-          <button class="demo-tab-btn px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0" data-tab="accounts">
-            <span>👥</span> 账户与权限
-          </button>
-          <button class="demo-tab-btn px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0" data-tab="status">
-            <span>📊</span> 服务状态与 WebDAV
-          </button>
-          <button class="demo-tab-btn px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-1.5 whitespace-nowrap transition-all shrink-0" data-tab="kernel">
-            <span>🛠️</span> 内核管理与回滚
-          </button>
+        <!-- Tab 标签页选择导航 (PC端 4 列等宽对称对齐，移动端平滑横滑+微提示) -->
+        <div class="relative bg-slate-100/90 border-b border-slate-200/80 p-1.5 sm:p-2">
+          <div class="demo-tab-list flex sm:grid sm:grid-cols-4 gap-1.5 sm:gap-2 overflow-x-auto custom-scrollbar px-1 py-0.5" style="-webkit-overflow-scrolling: touch; scroll-behavior: smooth;">
+            <button class="demo-tab-btn active flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0 sm:shrink select-none cursor-pointer min-h-[40px] bg-white text-emerald-700 shadow-md shadow-emerald-500/10 border border-emerald-200/80 ring-1 ring-slate-900/5 font-bold" data-tab="settings">
+              <span class="text-base sm:text-lg">⚙️</span>
+              <span>服务设置</span>
+            </button>
+            <button class="demo-tab-btn flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0 sm:shrink select-none cursor-pointer min-h-[40px] text-slate-600 hover:text-slate-900 hover:bg-white/60 border border-transparent" data-tab="accounts">
+              <span class="text-base sm:text-lg">👥</span>
+              <span>账户与权限</span>
+            </button>
+            <button class="demo-tab-btn flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0 sm:shrink select-none cursor-pointer min-h-[40px] text-slate-600 hover:text-slate-900 hover:bg-white/60 border border-transparent" data-tab="status">
+              <span class="text-base sm:text-lg">📊</span>
+              <span>服务状态与 WebDAV</span>
+            </button>
+            <button class="demo-tab-btn flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all duration-200 shrink-0 sm:shrink select-none cursor-pointer min-h-[40px] text-slate-600 hover:text-slate-900 hover:bg-white/60 border border-transparent" data-tab="kernel">
+              <span class="text-base sm:text-lg">🛠️</span>
+              <span>内核管理与回滚</span>
+            </button>
+          </div>
+          <!-- 移动端横滑微提示（平板和桌面端自动隐藏） -->
+          <div class="flex sm:hidden items-center justify-between px-2 pt-1.5 text-[10px] text-slate-400">
+            <span class="flex items-center gap-1">👈 左右滑动查看 4 大管理功能 👉</span>
+            <span class="font-mono text-[9px] bg-slate-200/80 px-1.5 py-0.5 rounded text-slate-500 font-medium">4 Tabs</span>
+          </div>
         </div>
 
         <!-- Tab 视图区域 -->
@@ -1009,11 +1020,17 @@ trash = true</pre>
             <h2 class="text-xl sm:text-3xl font-extrabold text-slate-900">安装与快速部署指南</h2>
           </div>
 
-          <!-- 系统选择 Tab -->
-          <div class="grid grid-cols-3 p-1 bg-slate-100 rounded-xl text-[11px] sm:text-xs font-bold text-slate-600 gap-1 text-center">
-            <button class="install-tab-btn active px-2 sm:px-3.5 py-1.5 rounded-lg bg-white text-emerald-700 shadow-sm truncate" onclick="switchInstallTab('apk')">ImmortalWrt (apk)</button>
-            <button class="install-tab-btn px-2 sm:px-3.5 py-1.5 rounded-lg hover:text-slate-900 truncate" onclick="switchInstallTab('opkg')">OpenWrt (opkg)</button>
-            <button class="install-tab-btn px-2 sm:px-3.5 py-1.5 rounded-lg hover:text-slate-900 truncate" onclick="switchInstallTab('source')">源码集成编译</button>
+          <!-- 系统选择 Tab (PC 优雅居右分段控件，手机自适应触控) -->
+          <div class="w-full sm:w-auto p-1 bg-slate-200/70 rounded-xl flex items-center gap-1 text-xs font-bold text-slate-600 overflow-x-auto custom-scrollbar">
+            <button class="install-tab-btn active flex-1 sm:flex-initial px-2.5 sm:px-4 py-2 rounded-lg bg-white text-emerald-700 shadow-sm whitespace-nowrap transition-all flex items-center justify-center gap-1.5" onclick="switchInstallTab('apk')">
+              <span>📦</span> ImmortalWrt (apk)
+            </button>
+            <button class="install-tab-btn flex-1 sm:flex-initial px-2.5 sm:px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/40 whitespace-nowrap transition-all flex items-center justify-center gap-1.5" onclick="switchInstallTab('opkg')">
+              <span>📦</span> OpenWrt (opkg)
+            </button>
+            <button class="install-tab-btn flex-1 sm:flex-initial px-2.5 sm:px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/40 whitespace-nowrap transition-all flex items-center justify-center gap-1.5" onclick="switchInstallTab('source')">
+              <span>⚙️</span> 源码集成编译
+            </button>
           </div>
         </div>
 
@@ -1351,11 +1368,14 @@ trash = true</pre>
         const tabId = btn.getAttribute('data-tab');
 
         demoTabBtns.forEach(b => {
-          b.classList.remove('active', 'text-emerald-700', 'bg-emerald-100/80', 'border-emerald-200');
-          b.classList.add('border-transparent');
+          b.classList.remove('active', 'bg-white', 'text-emerald-700', 'shadow-md', 'shadow-emerald-500/10', 'border-emerald-200/80', 'ring-1', 'ring-slate-900/5', 'font-bold');
+          b.classList.add('text-slate-600', 'hover:text-slate-900', 'hover:bg-white/60', 'border-transparent');
         });
-        btn.classList.add('active', 'text-emerald-700', 'bg-emerald-100/80', 'border-emerald-200');
-        btn.classList.remove('border-transparent');
+        btn.classList.add('active', 'bg-white', 'text-emerald-700', 'shadow-md', 'shadow-emerald-500/10', 'border-emerald-200/80', 'ring-1', 'ring-slate-900/5', 'font-bold');
+        btn.classList.remove('text-slate-600', 'hover:text-slate-900', 'hover:bg-white/60', 'border-transparent');
+
+        // 移动端点击 Tab 自动平滑居中滚动
+        btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
 
         demoTabContents.forEach(content => {
           content.classList.add('hidden');
@@ -1403,8 +1423,12 @@ trash = true</pre>
     function switchInstallTab(tab) {
       document.querySelectorAll('.install-tab-btn').forEach(btn => {
         btn.classList.remove('active', 'bg-white', 'text-emerald-700', 'shadow-sm');
+        btn.classList.add('text-slate-600', 'hover:text-slate-900', 'hover:bg-white/40');
       });
-      event.target.classList.add('active', 'bg-white', 'text-emerald-700', 'shadow-sm');
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('active', 'bg-white', 'text-emerald-700', 'shadow-sm');
+        event.currentTarget.classList.remove('text-slate-600', 'hover:text-slate-900', 'hover:bg-white/40');
+      }
 
       document.querySelectorAll('.install-content').forEach(c => c.classList.add('hidden'));
       const target = document.getElementById(`install-${tab}`);
