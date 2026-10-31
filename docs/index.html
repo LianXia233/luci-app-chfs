@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>luci-app-chfs · OpenWrt / ImmortalWrt chfs (CuteHttpFileServer) 现代图形化管理插件</title>
+  <meta name="description" content="适用于 OpenWrt / ImmortalWrt 的 chfs（CuteHttpFileServer）现代图形化管理插件 —— 服务控制、账户与目录级权限、WebDAV 真实探测、配置文件预览，以及内核一键下载 / 上传与自动备份回滚。LuCI JS 前端 + ucode 后端。">
+  <meta name="keywords" content="OpenWrt, ImmortalWrt, chfs, CuteHttpFileServer, WebDAV, 文件共享, LuCI, ucode, NAS, 私有云">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="luci-app-chfs · OpenWrt / ImmortalWrt chfs 现代图形化管理插件">
+  <meta property="og:description" content="服务控制、账户与目录级权限、WebDAV 真实探测、配置文件预览，以及内核一键下载 / 上传与自动备份回滚。">
+  <meta property="og:image" content="https://files.seeusercontent.com/2026/10/31/aE1a/145952531_p1.jpg">
+  <meta property="og:type" content="website">
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📁</text></svg>">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              200: '#bbf7d0',
+              300: '#86efac',
+              400: '#4ade80',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+              800: '#166534',
+              900: '#14532d',
+            },
+            accent: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+            },
+            cyan: {
+              500: '#06b6d4',
+              600: '#0891b2',
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'Roboto', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --card-opacity: 0.85;
+      --card-blur: 16px;
+      --wallpaper-blur: 0px;
+    }
+
+    /* 全局背景壁纸：固定全屏，高清无损显示 */
+    body {
+      background-color: #f1f5f9;
+      background-image: url('https://files.seeusercontent.com/2026/10/31/aE1a/145952531_p1.jpg');
+      background-size: cover;
+      background-position: center top;
+      background-attachment: fixed;
+      background-repeat: no-repeat;
+      min-height: 100vh;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      position: relative;
+    }
+
+    /* 保证壁纸透亮可见的轻柔氛围渐变底衬 */
+    .wallpaper-tint-overlay {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 15%, rgba(255, 255, 255, 0.40) 0%, rgba(248, 250, 252, 0.62) 65%, rgba(241, 245, 249, 0.72) 100%);
+      backdrop-filter: blur(var(--wallpaper-blur));
+      -webkit-backdrop-filter: blur(var(--wallpaper-blur));
+      pointer-events: none;
+      z-index: 0;
+      transition: backdrop-filter 0.3s ease, background 0.3s ease;
+    }
+
+    /* 现代纯白毛玻璃卡片（保持高对比度与通透感并重） */
+    .glass-card {
+      background: rgba(255, 255, 255, var(--card-opacity));
+      backdrop-filter: blur(var(--card-blur)) saturate(170%);
+      -webkit-backdrop-filter: blur(var(--card-blur)) saturate(170%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 10px 30px -5px rgba(22, 163, 74, 0.05), 0 4px 12px rgba(15, 23, 42, 0.03);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+    }
+
+    .glass-card-hover:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 16px 36px -6px rgba(22, 163, 74, 0.12), 0 6px 16px rgba(15, 23, 42, 0.04);
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+
+    /* 顶部导航栏毛玻璃 */
+    .glass-nav {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
+    }
+
+    /* 渐变标题字体 */
+    .gradient-title {
+      background: linear-gradient(135deg, #16a34a 0%, #059669 45%, #0284c7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* 滚动条美化 */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(241, 245, 249, 0.5);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.6);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.8);
+    }
+
+    /* 纯享壁纸模式全屏隐藏 */
+    body.zen-mode .main-content-wrapper {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.98);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    body.zen-mode .wallpaper-tint-overlay {
+      background: rgba(0, 0, 0, 0.02);
+    }
+    body.zen-mode #zenExitHint {
+      display: flex;
+    }
+  </style>
+</head>
+<body class="relative min-h-screen text-slate-800 selection:bg-brand-500 selection:text-white">
+
+  <!-- 背景轻柔氛围蒙版（保证壁纸高清可见，同时确保卡片内文字极度舒适可读） -->
+  <div class="wallpaper-tint-overlay" id="wallpaperOverlay"></div>
+
+  <!-- 纯享壁纸退出提示 (仅在 Zen Mode 时浮现) -->
+  <div id="zenExitHint" class="hidden fixed inset-0 z-50 flex items-center justify-center cursor-pointer bg-black/10 transition-opacity">
+    <div class="glass-card px-6 py-3 rounded-full flex items-center gap-3 text-sm font-medium text-slate-700 shadow-2xl animate-bounce">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+      🖼️ 正在纯享高清壁纸 · 单击屏幕任意处或按 ESC 恢复
+    </div>
+  </div>
+
+  <!-- 页面主体容器 -->
+  <div class="main-content-wrapper relative z-10 transition-all duration-300">
+
+    <!-- 1. 顶部悬浮导航栏 -->
+    <header class="glass-nav sticky top-0 z-40 transition-all duration-200">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <!-- Logo & Title -->
+        <a href="#hero" class="flex items-center gap-3 group">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-lg tracking-tight text-slate-900 group-hover:text-emerald-600 transition-colors">luci-app-chfs</span>
+              <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200" id="navVersionBadge">v1.0.1</span>
+            </div>
+            <p class="text-[11px] text-slate-500 leading-tight">CuteHttpFileServer 管理套件</p>
+          </div>
+        </a>
+
+        <!-- Desktop Navigation Links -->
+        <nav class="hidden md:flex items-center space-x-1 lg:space-x-2 text-sm font-medium text-slate-600">
+          <a href="#features" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">核心特性</a>
+          <a href="#live-demo" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">在线体验</a>
+          <a href="#gallery" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">界面预览</a>
+          <a href="#architecture" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">系统架构</a>
+          <a href="#install" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">安装指南</a>
+          <a href="#releases" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">固件下载</a>
+          <a href="#faq" class="px-3 py-1.5 rounded-lg hover:text-emerald-600 hover:bg-slate-100/70 transition-colors">排坑指南</a>
+        </nav>
+
+        <!-- Right Quick Actions -->
+        <div class="flex items-center gap-2.5">
+          <!-- 壁纸控制抽屉开关 -->
+          <button id="toggleWallpaperMenu" title="调节壁纸透视与毛玻璃透度" class="p-2 rounded-xl text-slate-600 hover:text-emerald-600 hover:bg-slate-100/80 transition-colors flex items-center gap-1.5 text-xs font-medium border border-slate-200/80 bg-white/70 shadow-sm">
+            <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+            <span class="hidden sm:inline">壁纸透视</span>
+          </button>
+
+          <!-- 一键纯享壁纸 -->
+          <button id="btnZenMode" title="一键纯享壁纸" class="p-2 rounded-xl text-slate-600 hover:text-emerald-600 hover:bg-slate-100/80 transition-colors border border-slate-200/80 bg-white/70 shadow-sm" onclick="toggleZenMode()">
+            <svg class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+
+          <!-- GitHub Repo Link with dynamic Star Badge -->
+          <a href="https://github.com/LianXia233/luci-app-chfs" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-emerald-700 text-white text-xs font-semibold shadow-sm transition-all duration-200 hover:shadow-md">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+            </svg>
+            <span class="hidden sm:inline">Star</span>
+            <span id="githubStarCount" class="px-1.5 py-0.5 rounded-md bg-white/20 text-[11px] font-mono">1</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- 壁纸氛围控制浮动弹层 -->
+    <div id="wallpaperControlPanel" class="hidden fixed top-16 right-4 sm:right-8 z-40 w-80 glass-card p-5 rounded-2xl shadow-2xl border border-white">
+      <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-200/80">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🎛️</span>
+          <h4 class="font-bold text-sm text-slate-800">壁纸透视与毛玻璃调节</h4>
+        </div>
+        <button id="closeWallpaperPanel" class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <div class="flex justify-between text-xs font-medium text-slate-600 mb-1.5">
+            <span>卡片透光度 (壁纸可见度)</span>
+            <span id="opacityValLabel" class="font-mono text-emerald-600">85%</span>
+          </div>
+          <input type="range" id="opacitySlider" min="40" max="96" value="85" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+          <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+            <span>超通透 (40%)</span>
+            <span>平衡 (85%)</span>
+            <span>实白 (96%)</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs font-medium text-slate-600 mb-1.5">
+            <span>背景微虚化 (景深感)</span>
+            <span id="blurValLabel" class="font-mono text-emerald-600">0 px</span>
+          </div>
+          <input type="range" id="blurSlider" min="0" max="10" value="0" step="1" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600">
+        </div>
+
+        <button onclick="toggleZenMode()" class="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:opacity-95 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+          一键纯享全屏壁纸
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. Hero 头部横幅区 -->
+    <section id="hero" class="pt-8 pb-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="glass-card rounded-3xl p-6 sm:p-10 lg:p-12 relative overflow-hidden border border-white">
+        <!-- 背景流光装饰 -->
+        <div class="absolute -top-24 -right-24 w-96 h-96 bg-gradient-to-br from-emerald-400/20 to-teal-400/20 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -bottom-24 -left-24 w-96 h-96 bg-gradient-to-tr from-cyan-400/15 to-emerald-400/15 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          <!-- Left Text Content -->
+          <div class="lg:col-span-7 space-y-6">
+            <!-- Badges Bar -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                OpenWrt 24.10.x &middot; ImmortalWrt
+              </span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+                LuCI JS 前端 + ucode 异步后端
+              </span>
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                原生 WebDAV + 真实状态探测
+              </span>
+            </div>
+
+            <!-- Headline -->
+            <div class="space-y-3">
+              <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.15]">
+                chfs 文件共享服务<br>
+                <span class="gradient-title">OpenWrt 现代图形化管理插件</span>
+              </h1>
+              <p class="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
+                为 <a href="http://iscute.cn/chfs" target="_blank" class="text-emerald-700 font-semibold underline decoration-emerald-300">CuteHttpFileServer</a> 打造的原生 LuCI 管理插件。具备<strong>硬核底层运行期真实探测</strong>、精细化多路径账户权限体系、原生 WebDAV 挂载，以及<strong>内核在线检测下载、自动备份与原子故障回滚</strong>。
+              </p>
+            </div>
+
+            <!-- Action CTAs -->
+            <div class="flex flex-wrap items-center gap-3 pt-2">
+              <a href="#releases" class="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white font-bold text-sm sm:text-base shadow-lg shadow-emerald-500/25 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                下载安装包 (.apk / .ipk)
+              </a>
+              <a href="#live-demo" class="px-5 py-3.5 rounded-2xl bg-white/90 hover:bg-white text-slate-800 font-bold text-sm sm:text-base border border-slate-200/90 shadow-sm hover:border-emerald-300 hover:text-emerald-600 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                在线沉浸式体验
+              </a>
+              <a href="https://github.com/LianXia233/luci-app-chfs" target="_blank" rel="noopener" class="px-4 py-3.5 rounded-2xl bg-slate-100/80 hover:bg-slate-200/80 text-slate-700 font-semibold text-sm flex items-center gap-1.5 transition-all">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                源码与 Issue
+              </a>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-200/80">
+              <div class="space-y-0.5">
+                <div class="text-2xl font-black text-emerald-600 font-mono">100%</div>
+                <div class="text-xs text-slate-500 font-medium">真实底层探测</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-2xl font-black text-teal-600 font-mono">WebDAV</div>
+                <div class="text-xs text-slate-500 font-medium">多端挂载就绪</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-2xl font-black text-cyan-600 font-mono">4 级</div>
+                <div class="text-xs text-slate-500 font-medium">路径权限粒度</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-2xl font-black text-purple-600 font-mono">原子级</div>
+                <div class="text-xs text-slate-500 font-medium">内核备份与回滚</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Showcase Card: 实时服务探测卡片 -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="glass-card rounded-2xl p-5 border border-white shadow-xl space-y-4">
+              <!-- Header inside mock -->
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200/80">
+                <div class="flex items-center gap-2.5">
+                  <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <span class="text-sm font-bold text-slate-800">chfs 服务正在运行</span>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-emerald-100 text-emerald-800">
+                  PID: 14205 (LISTEN)
+                </span>
+              </div>
+
+              <!-- 4-Block Metrics -->
+              <div class="grid grid-cols-2 gap-3 text-left">
+                <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60">
+                  <div class="text-[11px] text-slate-500">HTTP 监听端口</div>
+                  <div class="text-xl font-bold font-mono text-slate-900 mt-1 flex items-baseline gap-1">
+                    :8080 <span class="text-xs font-normal text-emerald-600">正常</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 mt-1">/proc/net/tcp 验证生效</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60">
+                  <div class="text-[11px] text-slate-500">WebDAV 端点状态</div>
+                  <div class="text-xl font-bold font-mono text-teal-600 mt-1 flex items-baseline gap-1">
+                    207 <span class="text-xs font-normal text-slate-500">Multi-Status</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 mt-1">PROPFIND 握手通过</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60">
+                  <div class="text-[11px] text-slate-500">当前共享主目录</div>
+                  <div class="text-sm font-bold font-mono text-slate-800 mt-1 truncate">
+                    /mnt/sda1/share
+                  </div>
+                  <div class="text-[10px] text-emerald-600 mt-1">&check; 路径挂载校验通过</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50/80 border border-slate-200/60">
+                  <div class="text-[11px] text-slate-500">物理内存常驻 (RSS)</div>
+                  <div class="text-base font-bold font-mono text-slate-800 mt-1">
+                    14.8 MB
+                  </div>
+                  <div class="text-[10px] text-slate-400 mt-1">极低内存占用</div>
+                </div>
+              </div>
+
+              <!-- Quick Link Button inside mock -->
+              <div class="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/80 flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-bold text-emerald-900">WebUI 前端直达链接</div>
+                  <div class="text-[11px] text-emerald-700 font-mono mt-0.5">http://192.168.1.1:8080</div>
+                </div>
+                <a href="#live-demo" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors shadow-sm">
+                  直达 WebUI
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 在线沉浸式控制台体验 (Interactive Live LuCI Demo) -->
+    <section id="live-demo" class="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="text-center max-w-3xl mx-auto mb-10 space-y-3">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+          <span>✨</span> 在线模拟控制台
+        </div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+          免刷机 · 浏览器内交互体验 LuCI 插件
+        </h2>
+        <p class="text-slate-600 text-sm sm:text-base">
+          完美还原客户端 JS 渲染架构。支持服务控制、账户权限细分、底层探测与内核备份回滚模拟！
+        </p>
+      </div>
+
+      <!-- 控制台外壳 -->
+      <div class="glass-card rounded-3xl overflow-hidden border border-white shadow-2xl">
+        <!-- LuCI 风格顶栏与 Tab 切换 -->
+        <div class="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+            <span class="font-mono text-xs text-slate-400 ml-2">OpenWrt LuCI &middot; 网络存储 (NAS) &rarr; chfs 文件共享</span>
+          </div>
+
+          <!-- 模拟运行状态指示 -->
+          <div class="flex items-center gap-2 text-xs">
+            <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+              chfs daemon : RUNNING
+            </span>
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+              v3.1
+            </span>
+          </div>
+        </div>
+
+        <!-- Tab 标签页选择导航 -->
+        <div class="bg-white/80 border-b border-slate-200/80 px-4 sm:px-6 flex overflow-x-auto gap-2 text-sm font-semibold text-slate-600 custom-scrollbar py-2">
+          <button class="demo-tab-btn active px-4 py-2 rounded-xl text-emerald-700 bg-emerald-100/80 border border-emerald-200 flex items-center gap-2 whitespace-nowrap transition-all" data-tab="settings">
+            <span>⚙️</span> 服务设置
+          </button>
+          <button class="demo-tab-btn px-4 py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-2 whitespace-nowrap transition-all" data-tab="accounts">
+            <span>👥</span> 账户与权限
+          </button>
+          <button class="demo-tab-btn px-4 py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-2 whitespace-nowrap transition-all" data-tab="status">
+            <span>📊</span> 服务状态与 WebDAV
+          </button>
+          <button class="demo-tab-btn px-4 py-2 rounded-xl hover:text-slate-900 hover:bg-slate-100/70 border border-transparent flex items-center gap-2 whitespace-nowrap transition-all" data-tab="kernel">
+            <span>🛠️</span> 内核管理与回滚
+          </button>
+        </div>
+
+        <!-- Tab 视图区域 -->
+        <div class="p-5 sm:p-8 bg-slate-50/50 min-h-[460px]">
+
+          <!-- Tab 1: 服务设置 (Settings) -->
+          <div id="demo-tab-settings" class="demo-tab-content space-y-6">
+            <div class="glass-card p-5 rounded-2xl border border-white space-y-5">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm">基础服务配置</h4>
+                  <p class="text-xs text-slate-500">服务启用状态、共享根目录、端口与身份控制</p>
+                </div>
+                <button id="demoServiceToggleBtn" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow transition-colors flex items-center gap-1.5" onclick="toggleServiceState()">
+                  <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                  <span id="demoServiceStateText">已启用 (点击切换)</span>
+                </button>
+              </div>
+
+              <!-- 表单网格 -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div class="space-y-1">
+                  <label class="font-bold text-slate-700">共享根目录路径</label>
+                  <input type="text" value="/mnt/sda1/share" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 font-mono text-slate-800 focus:outline-none focus:border-emerald-500">
+                  <p class="text-[11px] text-emerald-600">&check; 底层包含防空路径回退检测（避免暴露系统 /usr/bin）</p>
+                </div>
+
+                <div class="space-y-1">
+                  <label class="font-bold text-slate-700">HTTP / WebDAV 监听端口</label>
+                  <input type="number" value="8080" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 font-mono text-slate-800 focus:outline-none focus:border-emerald-500">
+                  <p class="text-[11px] text-slate-400">默认 8080，支持自定义为任意空闲端口</p>
+                </div>
+
+                <div class="space-y-1">
+                  <label class="font-bold text-slate-700">运行身份 (UID/GID)</label>
+                  <select class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800">
+                    <option selected>root (最高性能与完整读写)</option>
+                    <option>nobody (无特权隔离用户)</option>
+                  </select>
+                </div>
+
+                <div class="space-y-1">
+                  <label class="font-bold text-slate-700">匿名未登录访客权限</label>
+                  <select class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-800">
+                    <option selected>只读 (R) - 允许浏览与下载</option>
+                    <option>读写 (R/W) - 允许上传文件</option>
+                    <option>完全控制 (R/W/D) - 允许修改删除</option>
+                    <option>禁止访问 - 必须登录账户</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 高级选项开关 Pills -->
+              <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-xs">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked class="rounded text-emerald-600 focus:ring-emerald-500">
+                  <span class="font-medium text-slate-700">允许打包下载整目录 (zip)</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked class="rounded text-emerald-600 focus:ring-emerald-500">
+                  <span class="font-medium text-slate-700">删除文件移入回收站 (.trash)</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" class="rounded text-emerald-600 focus:ring-emerald-500">
+                  <span class="font-medium text-slate-700">启用 HTTPS 证书加密</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 2: 账户与权限 (Accounts) -->
+          <div id="demo-tab-accounts" class="demo-tab-content hidden space-y-6">
+            <div class="glass-card p-5 rounded-2xl border border-white space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm">用户账户与细粒度目录权限</h4>
+                  <p class="text-xs text-slate-500">支持为每个账户指定默认权限，并支持针对具体子路径独立覆盖授权</p>
+                </div>
+                <button class="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold text-xs shadow hover:bg-emerald-700" onclick="alert('已模拟添加一个新账户条目！')">
+                  &plus; 新增用户
+                </button>
+              </div>
+
+              <!-- 用户列表表格 -->
+              <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="w-full text-xs text-left">
+                  <thead class="bg-slate-100/80 text-slate-600 uppercase font-bold font-mono">
+                    <tr>
+                      <th class="px-4 py-3">用户名</th>
+                      <th class="px-4 py-3">密码</th>
+                      <th class="px-4 py-3">默认基线权限</th>
+                      <th class="px-4 py-3">子路径特殊权限覆盖</th>
+                      <th class="px-4 py-3 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr class="hover:bg-slate-50">
+                      <td class="px-4 py-3 font-bold font-mono text-slate-800">admin</td>
+                      <td class="px-4 py-3 font-mono text-slate-400">••••••••••</td>
+                      <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">完全控制 (R/W/D)</span></td>
+                      <td class="px-4 py-3 font-mono text-slate-500">全局所有目录</td>
+                      <td class="px-4 py-3 text-right"><span class="text-slate-400">系统内置</span></td>
+                    </tr>
+                    <tr class="hover:bg-slate-50">
+                      <td class="px-4 py-3 font-bold font-mono text-slate-800">family</td>
+                      <td class="px-4 py-3 font-mono text-slate-400">••••••••</td>
+                      <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">读写 (R/W)</span></td>
+                      <td class="px-4 py-3 font-mono text-slate-700">/Media: 读写 &middot; /Private: <span class="text-rose-600 font-bold">禁止</span></td>
+                      <td class="px-4 py-3 text-right">
+                        <button class="text-rose-600 hover:underline" onclick="alert('模拟删除账户')">删除</button>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-slate-50">
+                      <td class="px-4 py-3 font-bold font-mono text-slate-800">guest</td>
+                      <td class="px-4 py-3 font-mono text-slate-400">（无密码）</td>
+                      <td class="px-4 py-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">只读 (R)</span></td>
+                      <td class="px-4 py-3 font-mono text-slate-700">/Public: 只读 &middot; 其他目录隐藏</td>
+                      <td class="px-4 py-3 text-right">
+                        <button class="text-rose-600 hover:underline" onclick="alert('模拟删除账户')">删除</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab 3: 服务状态与 WebDAV (Status) -->
+          <div id="demo-tab-status" class="demo-tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- 左侧进程与探针 -->
+              <div class="glass-card p-5 rounded-2xl border border-white space-y-3">
+                <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  底层探测真实指标 (硬核排查)
+                </h4>
+                <div class="space-y-2 text-xs">
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">主进程 PID</span>
+                    <span class="font-bold text-slate-800 font-mono">14205 (pgrep chfs)</span>
+                  </div>
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">物理常驻内存 RSS</span>
+                    <span class="font-bold text-slate-800 font-mono">14.8 MB</span>
+                  </div>
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">TCP 监听端口状态</span>
+                    <span class="font-bold text-emerald-600 font-mono">&check; 0.0.0.0:8080 (ESTABLISHED)</span>
+                  </div>
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">当前执行二进制文件</span>
+                    <span class="font-bold text-slate-800 font-mono">/usr/bin/chfs (ELF 64-bit)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右侧 WebDAV 探测 -->
+              <div class="glass-card p-5 rounded-2xl border border-white space-y-3">
+                <h4 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span>
+                  WebDAV 挂载端点探测
+                </h4>
+                <div class="space-y-2.5 text-xs">
+                  <div class="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono space-y-1">
+                    <div class="text-[10px] text-slate-400">WebDAV 端点地址（点击复制）:</div>
+                    <div class="flex justify-between items-center text-emerald-400 font-bold">
+                      <span id="demoWebdavUrl">http://192.168.1.1:8080/webdav</span>
+                      <button class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-white text-[10px] copy-btn" data-clipboard="http://192.168.1.1:8080/webdav">复制</button>
+                    </div>
+                  </div>
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">PROPFIND 响应握手</span>
+                    <span class="font-bold text-teal-600 font-mono">HTTP/1.1 207 Multi-Status</span>
+                  </div>
+                  <div class="flex justify-between py-1.5 border-b border-slate-100">
+                    <span class="text-slate-500">Windows / Mac 挂载支持</span>
+                    <span class="font-bold text-slate-800 font-mono">原生支持，可作为网络驱动器盘符映射</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 配置预览折叠卡片 -->
+            <div class="glass-card p-4 rounded-2xl border border-white space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold text-slate-700">实际生效的 chfs.ini 配置文件内容</span>
+                <span class="font-mono text-slate-400 text-[11px]">/var/etc/chfs.ini</span>
+              </div>
+              <pre class="p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-xs overflow-x-auto custom-scrollbar leading-relaxed">
+[chfs]
+path = /mnt/sda1/share
+port = 8080
+rule = admin:*:rwd
+rule = family:*:rw
+rule = family:/Private:none
+rule = guest:*:r
+rule = ::r
+zip = true
+trash = true</pre>
+            </div>
+          </div>
+
+          <!-- Tab 4: 内核管理与回滚 (Kernel) -->
+          <div id="demo-tab-kernel" class="demo-tab-content hidden space-y-6">
+            <div class="glass-card p-5 rounded-2xl border border-white space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm">内核版本与生命周期管理</h4>
+                  <p class="text-xs text-slate-500">在线检测下载多镜像代理、本地上传、架构匹配检查与故障原子回滚</p>
+                </div>
+                <button class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-semibold text-xs shadow hover:opacity-95" onclick="alert('已模拟触发在线检测，当前内核 v3.1 已为最新！')">
+                  在线检测内核更新
+                </button>
+              </div>
+
+              <!-- 内核详情卡片 -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="text-slate-500 font-sans">当前内核版本</div>
+                  <div class="text-base font-bold text-emerald-600 mt-1">chfs 3.1 官方版</div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">iscute.cn 原生发布</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="text-slate-500 font-sans">架构匹配校验</div>
+                  <div class="text-base font-bold text-slate-800 mt-1">AArch64 / ARM64</div>
+                  <div class="text-[10px] text-emerald-600 mt-0.5">&check; ELF e_machine: 183 匹配</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <div class="text-slate-500 font-sans">自动备份快照</div>
+                  <div class="text-base font-bold text-teal-600 mt-1">可用快照: 1 份</div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">/etc/chfs/kernel-backup</div>
+                </div>
+              </div>
+
+              <!-- 回滚与安全机制提示 -->
+              <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-xs text-emerald-900 flex items-start gap-3">
+                <span class="text-base">🛡️</span>
+                <div class="space-y-1">
+                  <strong>故障自动回滚保障机制</strong>
+                  <p class="text-[11px] leading-relaxed text-emerald-800">
+                    在每次升级或替换内核前，插件均会自动打包备份当前正常运行的二进制。若新内核发生架构不兼容或无法拉起，系统将自动执行原子级快照回滚，确保路由器文件服务永不中断。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 实机界面截图图赏 (Screenshots Gallery) -->
+    <section id="gallery" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="text-center max-w-3xl mx-auto mb-10 space-y-3">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-800">
+          <span>🖼️</span> 真实界面一览
+        </div>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+          LuCI 实机界面图赏
+        </h2>
+        <p class="text-slate-600 text-sm sm:text-base">
+          截图取自 ImmortalWrt SNAPSHOT 实机（LuCI Master + Aurora 主题），点击任意图片即可全屏大图预览。
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Screenshot 1 -->
+        <div class="glass-card rounded-2xl overflow-hidden border border-white group cursor-pointer" onclick="openLightbox('screenshots/01-settings.png', 'chfs 服务设置界面 · 状态探测、目录与身份策略')">
+          <div class="aspect-video w-full overflow-hidden bg-slate-100">
+            <img src="screenshots/01-settings.png" alt="服务设置" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+          </div>
+          <div class="p-4 bg-white/70 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-slate-800 text-sm">服务设置界面</h4>
+              <p class="text-xs text-slate-500">服务控制、共享根目录、运行身份与直达链接</p>
+            </div>
+            <span class="text-xs font-semibold text-emerald-600 group-hover:translate-x-1 transition-transform">放大预览 &rarr;</span>
+          </div>
+        </div>
+
+        <!-- Screenshot 2 -->
+        <div class="glass-card rounded-2xl overflow-hidden border border-white group cursor-pointer" onclick="openLightbox('screenshots/02-accounts.png', '账户与细粒度目录权限 · 图形化多路径授权')">
+          <div class="aspect-video w-full overflow-hidden bg-slate-100">
+            <img src="screenshots/02-accounts.png" alt="账户与权限" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+          </div>
+          <div class="p-4 bg-white/70 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-slate-800 text-sm">账户与权限配置</h4>
+              <p class="text-xs text-slate-500">账户密码管理、默认权限与子目录特殊覆盖</p>
+            </div>
+            <span class="text-xs font-semibold text-emerald-600 group-hover:translate-x-1 transition-transform">放大预览 &rarr;</span>
+          </div>
+        </div>
+
+        <!-- Screenshot 3 -->
+        <div class="glass-card rounded-2xl overflow-hidden border border-white group cursor-pointer" onclick="openLightbox('screenshots/03-status.png', '服务状态与 WebDAV · 真实底层探测与 ini 预览')">
+          <div class="aspect-video w-full overflow-hidden bg-slate-100">
+            <img src="screenshots/03-status.png" alt="服务状态" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+          </div>
+          <div class="p-4 bg-white/70 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-slate-800 text-sm">服务状态与 WebDAV</h4>
+              <p class="text-xs text-slate-500">进程信息、端口监听、WebDAV 状态与配置全文</p>
+            </div>
+            <span class="text-xs font-semibold text-emerald-600 group-hover:translate-x-1 transition-transform">放大预览 &rarr;</span>
+          </div>
+        </div>
+
+        <!-- Screenshot 4 -->
+        <div class="glass-card rounded-2xl overflow-hidden border border-white group cursor-pointer" onclick="openLightbox('screenshots/04-kernel.png', '内核管理与自动备份 · 在线下载与故障回滚')">
+          <div class="aspect-video w-full overflow-hidden bg-slate-100">
+            <img src="screenshots/04-kernel.png" alt="内核管理" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+          </div>
+          <div class="p-4 bg-white/70 flex items-center justify-between">
+            <div>
+              <h4 class="font-bold text-slate-800 text-sm">内核管理与生命周期</h4>
+              <p class="text-xs text-slate-500">ELF 架构自动匹配、一键检测下载与快照回滚</p>
+            </div>
+            <span class="text-xs font-semibold text-emerald-600 group-hover:translate-x-1 transition-transform">放大预览 &rarr;</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lightbox 全屏预览 Modal -->
+    <div id="lightboxModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer" onclick="closeLightbox()">
+      <div class="relative max-w-5xl w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl p-2 cursor-default" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-4 py-2 text-white text-xs">
+          <span id="lightboxCaption" class="font-semibold text-sm">图片预览</span>
+          <button onclick="closeLightbox()" class="text-slate-400 hover:text-white text-xl font-bold">&times;</button>
+        </div>
+        <img id="lightboxImg" src="" alt="预览图" class="w-full h-auto max-h-[80vh] object-contain rounded-lg">
+      </div>
+    </div>
+
+    <!-- 5. 核心功能矩阵 (Feature Cards) -->
+    <section id="features" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="text-center max-w-3xl mx-auto mb-12 space-y-3">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+          <span>⚡</span> 现代架构亮点
+        </div>
+        <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+          专为 OpenWrt NAS 打造的八大强悍特性
+        </h2>
+        <p class="text-slate-600 text-sm sm:text-base">
+          拒绝虚假开关与多余性能开销，全量状态基于底层真实探测，极致轻巧。
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Card 1 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-green-500 text-white flex items-center justify-center text-xl shadow-md">
+            ⚡
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">硬核真实状态探测</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            告别传统插件的虚假开关，底层通过 <code class="text-emerald-700 font-mono">pgrep</code> 运行检测、<code class="text-emerald-700 font-mono">/proc/net/tcp</code> 端口监听与 PROPFIND 端点真实握手。
+          </p>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-600 to-cyan-500 text-white flex items-center justify-center text-xl shadow-md">
+            🔗
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">智能感知直达 WebUI</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            自动识别并拼接当前运行期<strong>真实生效</strong>的协议（HTTP/HTTPS）与端口，提供一键直达按钮，端口冲突即刻告警。
+          </p>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 text-white flex items-center justify-center text-xl shadow-md">
+            🌐
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">原生 WebDAV 协议支持</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            深度集成 chfs 内置 WebDAV 服务，状态页一键复制标准挂载链接，Windows、macOS、iOS 手机一键无缝映射为本地磁盘。
+          </p>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-500 text-white flex items-center justify-center text-xl shadow-md">
+            👥
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">精细化多路径权限控制</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            图形化账户管理，支持禁止访问、只读、读写、完全控制 4 级权限划分，支持针对子目录设立特殊权限覆盖。
+          </p>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center text-xl shadow-md">
+            🛠️
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">完整内核生命周期管理</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            独立内核管理页，支持多镜像加速在线下载与本地上传，提供 ELF 架构自动匹配、安装前自动备份与原子故障回滚。
+          </p>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 to-pink-500 text-white flex items-center justify-center text-xl shadow-md">
+            🛡️
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">空路径安全回退防护</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            彻底防范因外接移动硬盘未挂载成功时，chfs 自动回退至自身所在目录（<code class="text-rose-700 font-mono">/usr/bin</code>）导致系统文件泄露的严重安全隐患。
+          </p>
+        </div>
+
+        <!-- Card 7 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-700 to-slate-900 text-white flex items-center justify-center text-xl shadow-md">
+            ✨
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">LuCI 原生变量与明暗自适应</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            基于 LuCI 官方原生 CSS 变量系统设计，不写死硬编码色彩，无缝融合 Bootstrap、Argon、Aurora 等第三方深浅主题。
+          </p>
+        </div>
+
+        <!-- Card 8 -->
+        <div class="glass-card glass-card-hover p-6 rounded-3xl border border-white space-y-3">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-teal-600 text-white flex items-center justify-center text-xl shadow-md">
+            📦
+          </div>
+          <h3 class="font-extrabold text-slate-900 text-base">双包格式 & 全架构覆盖</h3>
+          <p class="text-xs text-slate-600 leading-relaxed">
+            同时提供 OpenWrt 24.10 的 <code class="font-mono">ipk</code> 与 25.x / ImmortalWrt 的 <code class="font-mono">apk</code>，覆盖 x86_64、Filogic ARM64 与通用 ARMv8。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 系统架构与数据链路 (Architecture) -->
+    <section id="architecture" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="glass-card p-6 sm:p-10 rounded-3xl border border-white space-y-8">
+        <div class="text-center max-w-3xl mx-auto space-y-2">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
+            <span>🏛️</span> 高度解耦
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">前后端协同与数据链路</h2>
+          <p class="text-xs sm:text-sm text-slate-500">
+            客户端 JS 负责界面渲染与事件响应，ucode 负责轻量高效的 RPC 业务逻辑与系统操作。
+          </p>
+        </div>
+
+        <!-- 架构流转卡片 -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+          <div class="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm text-center space-y-2">
+            <div class="w-10 h-10 mx-auto rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-lg">1</div>
+            <div class="font-bold text-slate-900 text-sm">LuCI JS 前端</div>
+            <p class="text-[11px] text-slate-500 leading-snug">四视图单页应用 (设置 / 账户 / 状态 / 内核)</p>
+          </div>
+
+          <div class="hidden md:flex justify-center text-emerald-500 font-bold text-xl">&rarr;</div>
+
+          <div class="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm text-center space-y-2">
+            <div class="w-10 h-10 mx-auto rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center font-bold text-lg">2</div>
+            <div class="font-bold text-slate-900 text-sm">rpcd / ucode</div>
+            <p class="text-[11px] text-slate-500 leading-snug">/usr/share/rpcd/ucode/chfs.uc 严格鉴权与探针执行</p>
+          </div>
+
+          <div class="hidden md:flex justify-center text-teal-500 font-bold text-xl">&rarr;</div>
+
+          <div class="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm text-center space-y-2">
+            <div class="w-10 h-10 mx-auto rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center font-bold text-lg">3</div>
+            <div class="font-bold text-slate-900 text-sm">procd & chfs</div>
+            <p class="text-[11px] text-slate-500 leading-snug">/etc/init.d/chfs 托管常驻守护，加载生成的 ini</p>
+          </div>
+        </div>
+
+        <div class="p-5 rounded-2xl bg-slate-900 text-white flex flex-col md:flex-row items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">📁</span>
+            <div>
+              <div class="font-bold text-sm">配置文件体系与存储</div>
+              <div class="text-xs text-slate-400">UCI 标准配置 /etc/config/chfs ➔ 自动动态编译生成运行时配置 /var/etc/chfs.ini</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="px-3 py-1 rounded-lg bg-slate-800 text-xs font-mono text-emerald-400 border border-slate-700">
+              备份目录: /etc/chfs/kernel-backup
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 安装与快速上手 (Install Guide) -->
+    <section id="install" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="glass-card p-6 sm:p-10 rounded-3xl border border-white space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 mb-2">
+              <span>📦</span> 极速安装
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">安装与快速部署指南</h2>
+          </div>
+
+          <!-- 系统选择 Tab -->
+          <div class="flex p-1 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
+            <button class="install-tab-btn active px-3.5 py-1.5 rounded-lg bg-white text-emerald-700 shadow-sm" onclick="switchInstallTab('apk')">ImmortalWrt / 25.x (apk)</button>
+            <button class="install-tab-btn px-3.5 py-1.5 rounded-lg hover:text-slate-900" onclick="switchInstallTab('opkg')">OpenWrt 24.10.x (opkg)</button>
+            <button class="install-tab-btn px-3.5 py-1.5 rounded-lg hover:text-slate-900" onclick="switchInstallTab('source')">源码集成编译</button>
+          </div>
+        </div>
+
+        <!-- 架构匹配说明 -->
+        <div class="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs sm:text-sm flex items-start gap-3">
+          <span class="text-xl">ℹ️</span>
+          <div class="space-y-1">
+            <div class="font-bold">按架构进入对应目录取包</div>
+            <p class="text-xs leading-relaxed text-blue-800">
+              Release 资产按架构分目录存储：<code class="font-mono font-bold">x86_64/</code>（软路由/虚拟机）、<code class="font-mono font-bold">aarch64_cortex-a53/</code>（MT798x / Filogic / H5000M）、<code class="font-mono font-bold">aarch64_generic/</code>（通用 ARMv8）。界面与语言包统一归入 <code class="font-mono font-bold">all/</code>。
+            </p>
+          </div>
+        </div>
+
+        <!-- Install Tab: apk -->
+        <div id="install-apk" class="install-content space-y-4">
+          <div class="space-y-2">
+            <div class="flex justify-between items-center text-xs font-semibold text-slate-700">
+              <span>apk 安装命令（以 x86_64 为例）</span>
+              <button class="text-emerald-600 hover:underline copy-btn" data-clipboard="apk add --allow-untrusted ./x86_64/chfs-3.1-r1_x86_64.apk ./all/luci-app-chfs-1.0.0-r6_all.apk ./all/luci-i18n-chfs-zh-cn-0_all.apk && rm -f /tmp/luci-indexcache* && /etc/init.d/rpcd reload">复制命令</button>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-x-auto custom-scrollbar leading-relaxed">
+              <span class="text-slate-500"># 1. 安装服务本体、LuCI 界面与简体中文语言包</span><br>
+              <code>apk add --allow-untrusted ./x86_64/chfs-3.1-r1_x86_64.apk \<br>
+              &nbsp;&nbsp;./all/luci-app-chfs-1.0.0-r6_all.apk \<br>
+              &nbsp;&nbsp;./all/luci-i18n-chfs-zh-cn-0_all.apk</code><br><br>
+              <span class="text-slate-500"># 2. 清除 LuCI 缓存并重载 RPC 服务</span><br>
+              <code>rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/<br>
+              /etc/init.d/rpcd reload</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Install Tab: opkg -->
+        <div id="install-opkg" class="install-content hidden space-y-4">
+          <div class="space-y-2">
+            <div class="flex justify-between items-center text-xs font-semibold text-slate-700">
+              <span>opkg 安装命令（以 x86_64 为例）</span>
+              <button class="text-emerald-600 hover:underline copy-btn" data-clipboard="opkg install ./x86_64/chfs_3.1-r1_x86_64.ipk ./all/luci-app-chfs_1.0.0-r6_all.ipk ./all/luci-i18n-chfs-zh-cn_0_all.ipk && rm -f /tmp/luci-indexcache* && /etc/init.d/rpcd reload">复制命令</button>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-x-auto custom-scrollbar leading-relaxed">
+              <span class="text-slate-500"># 1. 安装服务本体、LuCI 界面与简体中文语言包</span><br>
+              <code>opkg install ./x86_64/chfs_3.1-r1_x86_64.ipk \<br>
+              &nbsp;&nbsp;./all/luci-app-chfs_1.0.0-r6_all.ipk \<br>
+              &nbsp;&nbsp;./all/luci-i18n-chfs-zh-cn_0_all.ipk</code><br><br>
+              <span class="text-slate-500"># 2. 清除 LuCI 缓存并重载 RPC 服务</span><br>
+              <code>rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/<br>
+              /etc/init.d/rpcd reload</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Install Tab: Source -->
+        <div id="install-source" class="install-content hidden space-y-4">
+          <div class="p-3.5 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-x-auto custom-scrollbar leading-relaxed">
+            <span class="text-slate-500"># 1. 追加到 OpenWrt feeds.conf.default</span><br>
+            <code>src-git chfs https://github.com/LianXia233/luci-app-chfs.git</code><br><br>
+            <span class="text-slate-500"># 2. 更新并安装 feed</span><br>
+            <code>./scripts/feeds update chfs && ./scripts/feeds install -a -p chfs</code><br><br>
+            <span class="text-slate-500"># 3. 在 make menuconfig 中勾选</span><br>
+            <code>LuCI &gt; 3. Applications &gt; [*] luci-app-chfs</code>
+          </div>
+        </div>
+
+        <p class="text-xs text-slate-500">
+          安装成功后，刷新路由器后台即可在侧边栏：<strong>网络存储 (NAS) &rarr; chfs 文件共享</strong> 找到管理页面。
+        </p>
+      </div>
+    </section>
+
+    <!-- 8. 产物与版本下载 (Releases) -->
+    <section id="releases" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="glass-card p-6 sm:p-10 rounded-3xl border border-white space-y-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 mb-2">
+              <span>🚀</span> 预编译安装包
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">版本发布与产物下载</h2>
+            <p class="text-xs sm:text-sm text-slate-500 mt-1">
+              当前版本: <span id="latestReleaseTag" class="font-mono font-bold text-emerald-600">v1.0.1</span> (chfs 内核 3.1)
+            </p>
+          </div>
+
+          <a href="https://github.com/LianXia233/luci-app-chfs/releases" target="_blank" rel="noopener" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs flex items-center gap-1.5 self-start sm:self-auto transition-colors">
+            <span>查看 Releases 全部 14 项资产</span> &rarr;
+          </a>
+        </div>
+
+        <!-- 架构产物下载卡片矩阵 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <!-- Card 1: x86_64 -->
+          <div class="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-3 flex flex-col justify-between">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">软路由 / PVE / 虚拟机</span>
+                <span class="text-xs text-slate-400 font-mono">x86_64</span>
+              </div>
+              <h4 class="font-extrabold text-slate-900 text-base">x86_64 架构套件</h4>
+              <p class="text-xs text-slate-500">适用于 Intel / AMD 架构软路由、工控机与各类虚机环境</p>
+            </div>
+            <div class="pt-2 flex flex-col gap-2">
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs_3.1-r1_x86_64.ipk" class="w-full py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold text-center transition-colors">
+                下载 chfs 服务 .ipk (OpenWrt 24.10)
+              </a>
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs-3.1-r1_x86_64.apk" class="w-full py-2 px-3 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold text-center transition-colors">
+                下载 chfs 服务 .apk (ImmortalWrt)
+              </a>
+            </div>
+          </div>
+
+          <!-- Card 2: aarch64_cortex-a53 -->
+          <div class="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-3 flex flex-col justify-between">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Filogic MT798x / H5000M</span>
+                <span class="text-xs text-slate-400 font-mono">ARM64</span>
+              </div>
+              <h4 class="font-extrabold text-slate-900 text-base">aarch64_cortex-a53</h4>
+              <p class="text-xs text-slate-500">适用于 Hiveton H5000M、红米 AX6000、360T7、GL-MT6000 等</p>
+            </div>
+            <div class="pt-2 flex flex-col gap-2">
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs_3.1-r1_aarch64_cortex-a53.ipk" class="w-full py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold text-center transition-colors">
+                下载 chfs 服务 .ipk (OpenWrt 24.10)
+              </a>
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs-3.1-r1_aarch64_cortex-a53.apk" class="w-full py-2 px-3 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold text-center transition-colors">
+                下载 chfs 服务 .apk (ImmortalWrt)
+              </a>
+            </div>
+          </div>
+
+          <!-- Card 3: LuCI 前端与语言包 (all) -->
+          <div class="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-3 flex flex-col justify-between">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-700">全设备架构通用</span>
+                <span class="text-xs text-slate-400 font-mono">all</span>
+              </div>
+              <h4 class="font-extrabold text-slate-900 text-base">LuCI 管理界面与语言包</h4>
+              <p class="text-xs text-slate-500">纯客户端 JavaScript 视图与 ucode 桥接后端，任意架构通用</p>
+            </div>
+            <div class="pt-2 flex flex-col gap-2">
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/luci-app-chfs_1.0.0-r6_all.ipk" class="w-full py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold text-center transition-colors">
+                下载界面包 .ipk (含语言包)
+              </a>
+              <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/luci-app-chfs-1.0.0-r6_all.apk" class="w-full py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold text-center transition-colors">
+                下载界面包 .apk (含语言包)
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 独立内核二进制直接下载卡片 -->
+        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span>⚙️</span>
+            <span>独立内核二进制: <code class="font-mono text-slate-800">chfs-linux-amd64-3.1</code> (x86_64) &middot; <code class="font-mono text-slate-800">chfs-linux-arm64-3.1</code> (ARM64)</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs-linux-amd64-3.1" class="text-emerald-700 hover:underline font-semibold font-mono">amd64 内核</a>
+            <a href="https://github.com/LianXia233/luci-app-chfs/releases/download/v1.0.1/chfs-linux-arm64-3.1" class="text-emerald-700 hover:underline font-semibold font-mono">arm64 内核</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. 关键避坑与排坑指南 (FAQ & Pitfalls) -->
+    <section id="faq" class="py-14 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+      <div class="glass-card p-6 sm:p-10 rounded-3xl border border-white space-y-6">
+        <div class="text-center max-w-3xl mx-auto space-y-2 mb-8">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
+            <span>⚠️</span> 避坑速查
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900">核心注意事项与排坑指南</h2>
+          <p class="text-xs sm:text-sm text-slate-500">汇聚开发者在实机测试与极端环境下总结的经验之谈</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Item 1 -->
+          <div class="p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
+            <h4 class="font-extrabold text-rose-700 text-sm flex items-center gap-2">
+              <span>🚨</span> 空路径回退重大风险防范
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              当配置中的共享路径在设备上不存在时（例如移动硬盘挂载失败或拔出），chfs 进程默认会<strong>回退至自身所在目录（即 /usr/bin）</strong>作为共享根目录！此行为将导致路由器系统二进制文件暴露在局域网。本插件底层已加入严格的挂载路径实测校验，有效拦截该潜在隐患。
+            </p>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
+            <h4 class="font-extrabold text-amber-700 text-sm flex items-center gap-2">
+              <span>📦</span> 内核备份快照空间清理
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              内核管理模块备份位于 <code class="font-mono text-slate-800">/etc/chfs/kernel-backup</code>。每次安装新内核均会生成完整快照，单次操作约占用 8MB。小容量闪存（如 32MB / 64MB ROM）设备建议定期通过 SSH 或文件管理器清理历史无用备份，避免闪存耗尽。
+            </p>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
+            <h4 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+              <span class="text-emerald-600 font-mono">Q:</span> WebDAV 挂载在 Windows 上连接报错 0x800700DF？
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              Windows 自带的 WebClient 服务默认限制单文件传输大小为 50MB。如需拷贝大文件，只需修改 Windows 注册表项：<code class="font-mono text-[11px] text-slate-700">HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WebClient\Parameters\FileSizeLimitInBytes</code>，将其调至最大（例如 4GB：0xffffffff），重启 WebClient 服务即可畅快传输。
+            </p>
+          </div>
+
+          <!-- Item 4 -->
+          <div class="p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
+            <h4 class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+              <span class="text-emerald-600 font-mono">Q:</span> 为什么使用客户端 JS + ucode 架构？
+            </h4>
+            <p class="text-xs text-slate-600 leading-relaxed">
+              相比传统的 Lua CBI 表单模型，客户端 JS 渲染架构完全剥离了服务器端渲染负担，且基于 OpenWrt 22.03+ 官方推荐的 <code class="font-mono text-slate-800">rpcd-mod-ucode</code>，在拥有秒级响应的同时杜绝了内存泄漏，无缝支持明暗主题切换。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. 底部页脚与版权声明 (Footer) -->
+    <footer class="glass-nav mt-12 py-10 px-4 sm:px-6 lg:px-8 border-t border-slate-200/80 text-xs text-slate-600">
+      <div class="max-w-7xl mx-auto space-y-6">
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
+              CF
+            </div>
+            <div>
+              <span class="font-bold text-slate-900 text-sm">luci-app-chfs</span>
+              <span class="text-slate-400 ml-2">OpenWrt / ImmortalWrt chfs 图形化管理插件</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-6 font-medium">
+            <a href="https://github.com/LianXia233/luci-app-chfs" target="_blank" rel="noopener" class="hover:text-emerald-600 transition-colors">GitHub 主仓库</a>
+            <a href="http://iscute.cn/chfs" target="_blank" rel="noopener" class="hover:text-emerald-600 transition-colors">chfs 官方发布源</a>
+            <a href="https://github.com/LianXia233/luci-app-chfs/issues" target="_blank" rel="noopener" class="hover:text-emerald-600 transition-colors">反馈 Issue</a>
+            <a href="https://github.com/LianXia233/luci-app-chfs/blob/main/LICENSE" target="_blank" rel="noopener" class="hover:text-emerald-600 transition-colors">Apache-2.0 许可证</a>
+          </div>
+        </div>
+
+        <div class="pt-6 border-t border-slate-200/60 text-[11px] text-slate-500 leading-relaxed space-y-2">
+          <p>
+            开源协议：本项目以 <strong>Apache License 2.0</strong> 发布。Copyright &copy; 2026 LianXia233. 保留所有权利。
+          </p>
+          <p>
+            CuteHttpFileServer (chfs) 核心程序版权归其原作者（iscute.cn）所有。本项目仅为其提供 OpenWrt / ImmortalWrt 平台的 LuCI 图形化管理封装。
+          </p>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- JavaScript 交互逻辑 -->
+  <script>
+    // 1. 壁纸与毛玻璃透度控制
+    const toggleWallpaperMenu = document.getElementById('toggleWallpaperMenu');
+    const wallpaperControlPanel = document.getElementById('wallpaperControlPanel');
+    const closeWallpaperPanel = document.getElementById('closeWallpaperPanel');
+    const opacitySlider = document.getElementById('opacitySlider');
+    const opacityValLabel = document.getElementById('opacityValLabel');
+    const blurSlider = document.getElementById('blurSlider');
+    const blurValLabel = document.getElementById('blurValLabel');
+
+    if (toggleWallpaperMenu && wallpaperControlPanel) {
+      toggleWallpaperMenu.addEventListener('click', () => {
+        wallpaperControlPanel.classList.toggle('hidden');
+      });
+      closeWallpaperPanel.addEventListener('click', () => {
+        wallpaperControlPanel.classList.add('hidden');
+      });
+    }
+
+    if (opacitySlider) {
+      opacitySlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        const opacityDec = (val / 100).toFixed(2);
+        document.documentElement.style.setProperty('--card-opacity', opacityDec);
+        opacityValLabel.textContent = `${val}%`;
+      });
+    }
+
+    if (blurSlider) {
+      blurSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        document.documentElement.style.setProperty('--wallpaper-blur', `${val}px`);
+        blurValLabel.textContent = `${val} px`;
+      });
+    }
+
+    // 2. 纯享全屏壁纸模式 (Zen Mode)
+    function toggleZenMode() {
+      document.body.classList.toggle('zen-mode');
+      if (wallpaperControlPanel) wallpaperControlPanel.classList.add('hidden');
+    }
+
+    const zenExitHint = document.getElementById('zenExitHint');
+    if (zenExitHint) {
+      zenExitHint.addEventListener('click', () => {
+        document.body.classList.remove('zen-mode');
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('zen-mode')) {
+        document.body.classList.remove('zen-mode');
+      }
+    });
+
+    // 3. 在线体验 Tab 切换
+    const demoTabBtns = document.querySelectorAll('.demo-tab-btn');
+    const demoTabContents = document.querySelectorAll('.demo-tab-content');
+
+    demoTabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabId = btn.getAttribute('data-tab');
+
+        demoTabBtns.forEach(b => {
+          b.classList.remove('active', 'text-emerald-700', 'bg-emerald-100/80', 'border-emerald-200');
+          b.classList.add('border-transparent');
+        });
+        btn.classList.add('active', 'text-emerald-700', 'bg-emerald-100/80', 'border-emerald-200');
+        btn.classList.remove('border-transparent');
+
+        demoTabContents.forEach(content => {
+          content.classList.add('hidden');
+        });
+        const target = document.getElementById(`demo-tab-${tabId}`);
+        if (target) {
+          target.classList.remove('hidden');
+        }
+      });
+    });
+
+    // 4. 服务启停模拟切换
+    let isServiceRunning = true;
+    function toggleServiceState() {
+      isServiceRunning = !isServiceRunning;
+      const btn = document.getElementById('demoServiceToggleBtn');
+      const text = document.getElementById('demoServiceStateText');
+      if (isServiceRunning) {
+        btn.className = "px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow transition-colors flex items-center gap-1.5";
+        text.textContent = "已启用 (点击切换)";
+      } else {
+        btn.className = "px-3.5 py-1.5 rounded-xl bg-slate-400 hover:bg-slate-500 text-white font-semibold text-xs shadow transition-colors flex items-center gap-1.5";
+        text.textContent = "已停用 (点击启动)";
+      }
+    }
+
+    // 5. 图赏全屏 Lightbox
+    function openLightbox(src, caption) {
+      const modal = document.getElementById('lightboxModal');
+      const img = document.getElementById('lightboxImg');
+      const cap = document.getElementById('lightboxCaption');
+      if (modal && img && cap) {
+        img.src = src;
+        cap.textContent = caption;
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function closeLightbox() {
+      const modal = document.getElementById('lightboxModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    // 6. 安装方式 Tab 切换
+    function switchInstallTab(tab) {
+      document.querySelectorAll('.install-tab-btn').forEach(btn => {
+        btn.classList.remove('active', 'bg-white', 'text-emerald-700', 'shadow-sm');
+      });
+      event.target.classList.add('active', 'bg-white', 'text-emerald-700', 'shadow-sm');
+
+      document.querySelectorAll('.install-content').forEach(c => c.classList.add('hidden'));
+      const target = document.getElementById(`install-${tab}`);
+      if (target) target.classList.remove('hidden');
+    }
+
+    // 7. 复制按钮
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = btn.getAttribute('data-clipboard');
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          const original = btn.textContent;
+          btn.textContent = '已复制！';
+          btn.classList.add('text-emerald-600');
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('text-emerald-600');
+          }, 1800);
+        });
+      });
+    });
+
+    // 8. 动态从 GitHub API 获取实时 Stars
+    fetch('https://api.github.com/repos/LianXia233/luci-app-chfs')
+      .then(res => res.json())
+      .then(data => {
+        if (data.stargazers_count !== undefined) {
+          const starCount = document.getElementById('githubStarCount');
+          if (starCount) starCount.textContent = data.stargazers_count;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
