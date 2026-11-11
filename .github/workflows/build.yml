@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: 检出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # SNAPSHOT SDK 内容每天变化, 缓存 key 必须带日期, 否则会长期复用旧包
       - name: 计算缓存日期
@@ -179,7 +179,7 @@ jobs:
       # 因此必须先恢复再判断是否下载，顺序颠倒会导致永远命中不了缓存。
       - name: 恢复 SDK 缓存
         id: sdk-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sdk-cache/${{ matrix.sdk_file }}
           key: sdk-${{ matrix.sdk_file }}-${{ matrix.sdk_cache == 'daily' && steps.day.outputs.date || 'fixed' }}
@@ -220,7 +220,7 @@ jobs:
       # master 每日变化，缓存 key 带 UTC 日期，同一天的多个 job 共享一次下载。
       - name: 恢复 luci 源码缓存
         id: luci-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: luci-cache/luci.tgz
           key: luci-${{ env.LUCI_REPO }}-${{ env.LUCI_REF }}-${{ steps.day.outputs.date }}
@@ -409,7 +409,7 @@ jobs:
           find dist -type f | sort
 
       - name: 上传产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.format }}-${{ matrix.arch }}
           path: dist/**
@@ -437,10 +437,10 @@ jobs:
       contents: write
     steps:
       - name: 检出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 下载全部产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -521,7 +521,7 @@ jobs:
           echo "共清理 $deleted 个旧资产"
 
       - name: 创建 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           name: ${{ inputs.release_tag || github.ref_name }}
