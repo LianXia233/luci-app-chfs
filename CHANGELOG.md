@@ -7,6 +7,19 @@
 
 ---
 
+## [未发布] - 2026-11-12
+
+### 变更
+
+- `.github/workflows/build.yml`、`release.yml` 共 9 处 `uses:` 升级：
+  `actions/checkout@v4` → `v7`、`actions/upload-artifact@v4` → `v7`、
+  `actions/download-artifact@v4` → `v8`、`actions/cache@v4` → `v6`、
+  `softprops/action-gh-release@v2` → `v3`。
+- GitHub 已于 2026-09-23 从托管 runner 移除 Node 20 运行时，仍声明 `node20` 的 action 会被强制跑在 Node 24 上并打印 `Node.js 20 is deprecated` 告警，属于未验证状态；本次按各 action 的 `action.yml` 逐一核对 `runs.using` 后统一升级。
+- **仅改 CI 配置**：项目源码、`node-version` / `python-version` / `go-version` 等工具链版本、产物命名与 Release 流程均未改动。告警指的是 action 自身声明的运行时，不是项目构建所用的 Node 版本。
+  三架构矩阵与 `SHA256SUMS` / `manifest.json` 生成逻辑均未改动。
+- 升级后全仓复扫 59 个工作流/Action 文件：`node20` / `node16` / `node12` 引用残留为 0，所有 YAML 均可解析。
+
 ## [1.0.1] - 2026-09-20
 
 补全 `aarch64_generic` 架构，重构云编译矩阵与 Release 资产结构。
