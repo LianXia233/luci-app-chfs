@@ -38,7 +38,7 @@ permissions:
 jobs:
   release:
     name: 补发 chfs 内核二进制
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

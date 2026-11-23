@@ -42,6 +42,7 @@
 - 构建脚本改为不依赖 GNU `install -D` / `stat -c`，改善 macOS/BSD 构建兼容性。
 - `chfs` 包许可标记由 Apache-2.0 改为 `UNKNOWN`，等待上游明确许可。
 - CI 增加静态检查 job（Shell/Python/JS/JSON 语法）、并发取消与超时限制。
+- CI runner 固定为 `ubuntu-24.04`，避免 `ubuntu-latest` 切换到新发行版后 GNU `install` 前置检查失效。
 
 ## [1.0.0-r6] - 2026-11-12
 
