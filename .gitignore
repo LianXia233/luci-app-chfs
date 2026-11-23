@@ -26,6 +26,7 @@ __pycache__/
 /staging_dir/
 /bin/
 /tmp/
+/tmp-dl/
 /dl/
 /logs/
 

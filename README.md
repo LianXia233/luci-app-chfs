@@ -32,7 +32,7 @@
 
 ## 📸 界面预览
 
-截图均取自 ImmortalWrt SNAPSHOT 实机（搭载 LuCI Master 及 Aurora 主题），展示 4 大核心视图：
+截图均取自 ImmortalWrt SNAPSHOT 实机（搭载 LuCI Master 及 Aurora 主题），展示 4 大核心视图。截图中 `admin` 为演示用自行添加的账户，默认配置不预置固定口令账户。
 
 | ⚙️ 服务主设置 | 👥 账户与权限细分 |
 |:---:|:---:|
@@ -46,35 +46,35 @@
 
 | 特性维度 | 说明与优势 |
 |:---|:---|
-| ⚡ **硬核真实状态探测** | 拒绝传统插件的虚假进程判断，全量状态基于 Linux 底层真实探测（`pgrep` 运行检测、`/proc/net/tcp` 端口真实监听探测、`curl PROPFIND` WebDAV 端点握手探测）。 |
+| ⚡ **硬核真实状态探测** | 拒绝传统插件的虚假进程判断，全量状态基于 Linux 底层真实探测（`pidof` 运行检测、`/proc/net/tcp` 端口真实监听探测、`curl PROPFIND` WebDAV 端点握手探测）。 |
 | 🔗 **动态 WebUI 智能入口** | 前端自动根据当前**运行期真实生效**的协议（HTTP/HTTPS）与实际监听端口动态拼接访问链接；修改端口未应用时智能发出**不一致告警**，杜绝 404。 |
 | 📁 **多路径细粒度权限管控** | 深度支持 chfs 强大的账户权限体系，支持配置用户默认权限（`禁止访问` / `只读` / `读写` / `完全控制`），并可针对多个不同子目录进行单独覆盖。 |
 | 🌐 **原生 WebDAV 全兼容** | 完整兼容 chfs 1.10+ 内置 WebDAV 协议栈，状态页一键复制客户端挂载地址，完美适配 Windows 网络位置、macOS Finder、Infuse 等客户端。 |
-| 🛠️ **事务级内核热升级与回滚** | 独立管理标签页，支持在线检测下载（多镜像代理白名单）与本地上传；支持 ELF 架构自动比对、安装前全量备份、健康探测与失败瞬间原子回滚。 |
+| 🛠️ **事务级内核热升级与回滚** | 独立管理标签页，支持在线检测下载（多镜像代理白名单、内置 SHA256 强制校验）与本地上传；支持 ELF 架构自动比对、安装前全量备份、健康探测与失败瞬间原子回滚。 |
 | 🎨 **原生 CSS 变量自适应** | 采用原生 LuCI 规范的 CSS 变量系统，无缝兼容经典主题、Argon、Design、Aurora 等各种明暗主题配色，无私有样式侵入。 |
 
 ---
 
 ## ⚡ 快速安装
 
-Release 发布包按架构分目录归档，安装前请先确认设备架构（菜单位于 **网络存储 (NAS) → chfs 文件共享**）：
+Release 发布包全部位于 Release 根目录，文件名自带架构后缀；安装前请先确认设备架构（菜单位于 **网络存储 (NAS) → chfs 文件共享**）：
 
-| 资产目录 | 适用设备架构 | 典型硬件型号 |
+| 文件名后缀 | 适用设备架构 | 典型硬件型号 |
 |:---|:---|:---|
-| **`x86_64/`** | x86_64 架构 PC / 工控机 / 软路由 | 物理软路由、PVE / ESXi / Hyper-V 虚拟机 |
-| **`aarch64_cortex-a53/`** | 64 位 ARM（Filogic 平台） | Hiveton H5000M、GL.iNet MT6000、BPi-R3 等 |
-| **`aarch64_generic/`** | 通用 64 位 ARM (ARMv8) | armsr/armv8、RK3568/RK3588、通用 ARM 固件 |
-| **`all/`** | 架构无关（纯前端与语言包） | `luci-app-chfs` 与 `luci-i18n-chfs-zh-cn`（全设备通用） |
+| **`_x86_64`** | x86_64 架构 PC / 工控机 / 软路由 | 物理软路由、PVE / ESXi / Hyper-V 虚拟机 |
+| **`_aarch64_cortex-a53`** | 64 位 ARM（Filogic 平台） | Hiveton H5000M、GL.iNet MT6000、BPi-R3 等 |
+| **`_aarch64_generic`** | 通用 64 位 ARM (ARMv8) | armsr/armv8、RK3568/RK3588、通用 ARM 固件 |
+| **`_all`** | 架构无关（纯前端与语言包） | `luci-app-chfs` 与 `luci-i18n-chfs-zh-cn`（全设备通用） |
 
-前往 [GitHub Releases](https://github.com/LianXia233/luci-app-chfs/releases) 下载对应目录下的安装包：
+前往 [GitHub Releases](https://github.com/LianXia233/luci-app-chfs/releases) 下载对应文件：
 
 ### 方式 A：apk 系统 (ImmortalWrt / OpenWrt 25.x / SNAPSHOT)
 
 ```sh
-# 以 x86_64 为例（若是 ARM 架构请替换为对应的 aarch64 目录）
-apk add --allow-untrusted ./x86_64/chfs-3.1-r1_x86_64.apk
-apk add --allow-untrusted ./all/luci-app-chfs-1.0.0-r6_all.apk
-apk add --allow-untrusted ./all/luci-i18n-chfs-zh-cn-0_all.apk
+# 以 x86_64 为例（若是 ARM 架构请替换文件名中的架构后缀）
+apk add --allow-untrusted ./chfs-3.1-r1_x86_64.apk
+apk add --allow-untrusted ./luci-app-chfs-1.0.0-r6_all.apk
+apk add --allow-untrusted ./luci-i18n-chfs-zh-cn-0_all.apk
 
 # 清理缓存并平滑重载 RPC 视图
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
@@ -84,15 +84,18 @@ rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 ### 方式 B：opkg 系统 (OpenWrt 24.10.x / 23.05)
 
 ```sh
-# 以 x86_64 为例（若是 ARM 架构请替换为对应的 aarch64 目录）
-opkg install ./x86_64/chfs_3.1-r1_x86_64.ipk
-opkg install ./all/luci-app-chfs_1.0.0-r6_all.ipk
-opkg install ./all/luci-i18n-chfs-zh-cn_0_all.ipk
+# 以 x86_64 为例（若是 ARM 架构请替换文件名中的架构后缀）
+opkg install ./chfs_3.1-r1_x86_64.ipk
+opkg install ./luci-app-chfs_1.0.0-r6_all.ipk
+opkg install ./luci-i18n-chfs-zh-cn_0_all.ipk
 
 # 清理缓存并重载服务
 rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/
 /etc/init.d/rpcd reload
 ```
+
+> [!NOTE]
+> GitHub Release 不支持资产子目录，所有包都平铺在 Release 根目录；`SHA256SUMS` 中也只记录文件名，可直接执行 `sha256sum -c SHA256SUMS` 校验。
 
 ---
 
@@ -104,29 +107,34 @@ UCI 配置文件位于 `/etc/config/chfs`，由 `init.d` 脚本在服务启动�
 
 | UCI 字段 | 类型 / 可选值 | 默认值 | 作用与功能说明 |
 |:---|:---:|:---:|:---|
-| `enabled` | `0` / `1` | `0` | 开机自启与服务运行总开关 |
+| `enabled` | `0` / `1` | `0` | 服务总开关；安装时已启用 init 脚本，本开关决定是否随系统启动 |
 | `port` | `1 - 65535` | `8080` | HTTP / WebDAV 共享监听网络端口 |
-| `path` | 绝对路径 | — | 共享根目录路径（多路径可用 `\|` 分隔） |
-| `run_as` | `root` / `nobody` | `nobody` | 进程安全执行身份（推荐保持 nobody） |
-| `anonymous` | `0` / `1` | `1` | 是否允许访客（guest）免登录匿名浏览 |
+| `path` | 绝对路径 | `/mnt/sda1` | 共享根目录路径（多路径可用 `\|` 分隔；启动时强制校验存在） |
+| `run_as` | `root` / `nobody` | `root` | 进程安全执行身份（nobody 需确保目录权限正确） |
+| `anonymous` | `0` / `1` | `1` | 是否生成 `[guest]` 匿名账户段；关闭后不生成该段 |
 | `allow` | IP / CIDR | — | 客户端访问白名单（多项用 `\|` 分隔，留空不限制） |
-| `folder_download` | `disable` / `leaf` / `enable` | `leaf` | 目录打包下载策略（leaf 表示仅允许打包叶子目录） |
-| `file_remove` | `1` / `2` / `3` | `1` | 删除策略：`1` 永久删除 / `2` chfs 回收站 / `3` 系统回收站 |
-| `image_preview` | `0` / `1` | `1` | 是否开启相册图片缩略图预加载生成 |
-| `ssl_cert` / `ssl_key` | 证书路径 | — | HTTPS 证书与私钥绝对路径（**两项皆填**时激活 TLS） |
-| `log_dir` | 目录路径 | — | 操作日志存储目录（留空则不写入磁盘日志） |
-| `session_timeout` | 分钟数 (`1-1440`) | — | WebUI 登录会话保持有效时长 |
+| `folder_download` | `disable` / `leaf` / `enable` | `enable` | 目录打包下载策略（leaf 表示仅允许打包叶子目录） |
+| `file_remove` | `1` / `2` / `3` | `3` | 删除策略：`1` 系统回收站 / `2` chfs 回收站 / `3` 永久删除 |
+| `image_preview` | `0` / `1` | `0` | 是否开启相册图片缩略图预加载生成 |
+| `ssl_cert` / `ssl_key` | 证书路径 | — | HTTPS 证书与私钥绝对路径（**两项皆填且文件存在**时激活 TLS） |
+| `log_path` | 目录路径 | — | 操作日志存储目录（留空则不写入磁盘日志） |
+| `session_timeout` | 分钟数 (`1-1440`) | `30` | WebUI 登录会话保持有效时长 |
 
 ### 账户与权限配置范例
+
+> [!IMPORTANT]
+> 默认配置只保留只读匿名账户 `guest`，**不再预置 `admin/chfs` 这类固定口令账户**。首次使用请先在「账户与权限」页新增管理员账户。
+>
+> 从旧版本升级时，`/etc/config/chfs` 会保留原有账户；若仍存在 `admin/chfs`，请立即修改密码或删除该账户。
 
 ```uci
 config account
     option name 'admin'
-    option password 'MySecretPassword123'
-    option rule_default 'w'             # 默认权限: none(无) / r(读) / w(读写) / d(完全控制)
-    list rule_r '/public'               # 子目录 /public 强制锁定为只读
-    list rule_w '/upload'               # 子目录 /upload 允许上传读写
-    list rule_d 'none'                  # 禁用对该账户的删除操作
+    option password '请替换为强密码'
+    option rule_default 'd'             # 默认权限: none(无) / r(读) / w(读写) / d(完全控制)
+    option rule_r '/public'             # 子目录 /public 强制锁定为只读
+    option rule_w '/upload'             # 子目录 /upload 允许上传读写
+    option rule_none '/private'         # 禁止访问 /private
 ```
 
 > [!NOTE]
@@ -156,9 +164,9 @@ config account
 
 ```mermaid
 graph TD
-    A[选择下载源 / 上传内核文件] --> B[暂存至 /etc/luci-uploads]
+    A[选择下载源 / 上传内核文件] --> B[暂存至 /etc/luci-uploads/chfs]
     B --> C{静态安全检验}
-    C -- 校验失败: 架构/ELF魔数不符 --> D[安全阻断并报错, 零影响现有服务]
+    C -- 校验失败: 架构/ELF/SHA256 不符 --> D[安全阻断并报错, 零影响现有服务]
     C -- 校验通过 --> E[自动备份旧内核至 /etc/chfs/kernel-backup/]
     E --> F[安全停止当前运行进程]
     F --> G[原子替换覆盖 /usr/bin/chfs]
@@ -182,11 +190,11 @@ graph TD
 
 > [!CAUTION]
 > **空路径安全回退风险（务必注意！）**：
-> 当配置中的共享路径在设备上不存在时（例如外接移动硬盘断开或挂载失败），chfs 上游进程会默认回退至**自身程序所在目录**（即 `/usr/bin`）作为共享根目录！此行为将导致系统的二进制可执行文件直接暴露于局域网。保存配置时请务必核验挂载点真实存在。
+> 当配置中的共享路径在设备上不存在时（例如外接移动硬盘断开或挂载失败），chfs 上游进程会默认回退至**自身程序所在目录**（即 `/usr/bin`）作为共享根目录！此行为将导致系统的二进制可执行文件直接暴露于局域网。插件已在启动前强制校验共享目录，目录缺失时**拒绝启动**；请确保挂载点在开机时可用。
 
 > [!WARNING]
 > **内核备份历史清理**：
-> 内核备份保存在 `/etc/chfs/kernel-backup`，每次安装新内核均会生成完整快照（4 次操作约占用 32 MB 空间）。小容量闪存设备请定期手动清理旧备份文件。
+> 内核备份保存在 `/etc/chfs/kernel-backup`，每次安装新内核均会生成完整快照（4 次操作约占用 32 MB 空间）。可在「内核管理 → 备份」中逐个删除，或定期手动清理旧备份文件。
 
 1. **BusyBox 工具链兼容**：路由器 BusyBox 环境默认不含 `install` 命令，原子替换由 `chmod 0755` 与 `mv -f` 安全实现；
 2. **ucode 语言特性**：`'use strict'` 下不存在全局 `undefined`，判空请使用 `=== null`；ucode 不具备函数声明提升机制，必须先声明后调用；
@@ -203,17 +211,17 @@ luci-app-chfs/
 │   ├── build.yml                 # 云编译：apk/ipk × 3 架构矩阵构建与发布
 │   └── release.yml               # 手动触发：追加内核资产
 ├── chfs/                         # chfs 二进制包封装
-│   ├── Makefile                  # 构建逻辑（优先复用预置，回退上游）
+│   ├── Makefile                  # 构建逻辑（优先复用预置；回退上游需显式 SHA256）
 │   ├── bin-manifest.txt          # 架构、体积与 SHA256 校验清单
 │   └── bin/                      # 预置二进制库 (amd64 / arm64)
 ├── luci-app-chfs/                # LuCI 现代架构前端源码
 │   ├── Makefile
-│   ├── htdocs/resources/view/chfs/ # 前端视图 (main/accounts/status/kernel.js)
+│   ├── htdocs/luci-static/resources/view/chfs/ # 前端视图 (main/accounts/status/kernel.js)
 │   ├── po/zh_Hans/               # 简体中文翻译字典
 │   └── root/                     # 运行环境镜像
 │       ├── etc/config/chfs       # UCI 默认配置
 │       ├── etc/init.d/chfs       # procd 服务脚本 (UCI -> ini 渲染)
-│       └── usr/share/rpcd/ucode/luci.chfs # ucode RPC 后端 (16 个 ubus 接口)
+│       └── usr/share/rpcd/ucode/luci.chfs # ucode RPC 后端 (14 个 ubus 接口)
 ├── tools/                        # 二进制抓取与自动化发版打包脚本
 └── docs/screenshots/             # 界面展示截图
 ```
@@ -232,6 +240,14 @@ make package/luci-base/host/compile V=s
 make package/chfs/compile V=s
 make package/luci-app-chfs/compile V=s LUCI_MINIFY_JS=0 LUCI_MINIFY_CSS=0
 ```
+
+> [!NOTE]
+> 仓库只预置 `amd64` / `arm64` 内核。若目标架构未预置，必须显式提供上游包 SHA256，
+> 否则构建会拒绝通过明文 HTTP 下载：
+>
+> ```sh
+> make package/chfs/compile V=s CHFS_UPSTREAM_SHA256=<上游 zip 的 sha256>
+> ```
 
 ---
 

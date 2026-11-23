@@ -15,9 +15,8 @@
 #     2. 某次 Release 的内核资产缺失需要补齐;
 #     3. build.yml 发布的内核被误删需要找回。
 #
-#   它只上传两个内核二进制本身, 不再单独上传 SHA256SUMS ——
-#   该文件的权威版本由 build.yml 生成(覆盖包 + 内核), 此处覆盖会使其
-#   只剩内核条目而丢失包的校验值。
+#   上传前会取回该 Release 的全部现有资产, 用 package-release.py refresh
+#   重建 SHA256SUMS / manifest.json, 保证补发后校验清单仍然有效。
 #
 # 用法: Actions -> Release Chfs Kernel -> Run workflow, 指定已存在的 tag。
 #
@@ -40,6 +39,9 @@ jobs:
   release:
     name: 补发 chfs 内核二进制
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: 检出源码
@@ -111,22 +113,61 @@ jobs:
 
           [ "$fail" = "0" ] || exit 1
 
-      - name: 准备资产
+      - name: 准备内核资产
         run: |
           set -e
           mkdir -p dist
           cp chfs/bin/arm64/chfs dist/chfs-linux-arm64-3.1
           cp chfs/bin/amd64/chfs dist/chfs-linux-amd64-3.1
           chmod 0755 dist/chfs-linux-arm64-3.1 dist/chfs-linux-amd64-3.1
-          echo "==== 待上传 ===="
+          echo "==== 内核资产 ===="
           ls -la dist/
           sha256sum dist/*
 
-      - name: 追加到 Release
+      # 覆盖内核后必须重建 SHA256SUMS / manifest.json, 否则发布物自校验会失败。
+      # 先取回该 Release 现有资产, 把新内核放进去, 再用 refresh 统一重算。
+      - name: 取回现有 Release 资产
+        run: |
+          set -e
+          TAG="${{ inputs.release_tag }}"
+          mkdir -p release-assets
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            count=$(gh release view "$TAG" --json assets --jq '.assets | length')
+            if [ "$count" -gt 0 ]; then
+              gh release download "$TAG" --dir release-assets --clobber
+              echo "已取回 Release $TAG 的 $count 个现有资产"
+            else
+              echo "Release $TAG 存在但尚无资产"
+            fi
+          else
+            echo "::warning::Release $TAG 尚不存在, 将只发布内核与校验清单"
+          fi
+
+      - name: 重建 SHA256SUMS 与 manifest
+        run: |
+          set -e
+          TAG="${{ inputs.release_tag }}"
+          cp dist/chfs-linux-* release-assets/
+
+          python3 tools/package-release.py refresh \
+            --dir release-assets \
+            --tag "$TAG" \
+            --notes notes/kernel-notes.md
+
+          echo "==== 刷新后的校验清单 ===="
+          cat release-assets/SHA256SUMS
+          echo "==== manifest 摘要 ===="
+          python3 -c "import json; d=json.load(open('release-assets/manifest.json')); print('packages:', len(d['packages']), 'kernels:', len(d['kernels']))"
+
+      - name: 上传内核与校验清单
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.release_tag }}
-          files: dist/*
+          files: |
+            release-assets/chfs-linux-*
+            release-assets/SHA256SUMS
+            release-assets/manifest.json
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,4 +183,4 @@ jobs:
             echo "| \`chfs-linux-$arch-3.1\` | $(stat -c%s "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |" >> $GITHUB_STEP_SUMMARY
           done
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "SHA256SUMS 的权威版本由 build.yml 生成，本工作流不覆盖。" >> $GITHUB_STEP_SUMMARY
+          echo "SHA256SUMS 与 manifest.json 已基于该 Release 的全部现有资产重建。" >> $GITHUB_STEP_SUMMARY

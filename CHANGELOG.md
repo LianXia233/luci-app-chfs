@@ -7,7 +7,43 @@
 
 ---
 
-## [未发布] - 2026-11-12
+## [未发布] - 2026-11-24
+
+全面修复审查发现的功能、安全与发布流程问题。
+
+### 修复
+
+- **“保存并应用”不提交 UCI**：自定义 `handleSaveApply` 只写入暂存区，从未调用 `uci.apply()`，导致配置不生效；现改为提交成功后再重启服务，并把启动错误反馈到界面。
+- **共享目录缺失时拒绝启动**：`init.d` 现在会硬校验所有共享路径，避免 chfs 回退到 `/usr/bin` 暴露系统文件；`uci-defaults` 按实际默认路径创建目录。
+- **`run_as=nobody` 不可用**：渲染后的 ini 改为 `root:nogroup` + `0640`，`procd` 使用 `nogroup` 组，并为运行用户设置可写 `HOME` 与日志目录。
+- **匿名访问开关无效**：`anonymous=0` 时不再生成 `[guest]` 段，匿名访问真正关闭。
+- **默认弱口令**：移除预置的 `admin/chfs` 账户，默认只保留只读 `guest`；首次使用需自行创建管理员。
+- **状态页泄露口令**：`read_ini` 对 `password=` 行打码，并从只读 ACL 移除 `read_config` / `preview_ini`。
+- **内核下载无完整性校验**：下载后强制与内置 SHA256 比对，不一致立即删除；`kernel_info` 显示真实版本与校验状态。
+- **ELF 大端解析错误**：`e_machine` 现在按 `EI_DATA` 判断字节序，修复大端 MIPS/MIPS64 架构误判。
+- **内核安装/回滚在服务停用时误判失败**：服务未启用时只替换内核并提示“启动后生效”，不再错误回滚。
+- **INI 注入与 shell 拼接**：所有写入 ini 的值压缩为单行；所有拼入 shell 的路径、URL 统一使用单引号转义；下载 URL 额外拒绝空白与引号。
+- **待安装区越界**：内核上传/下载改用专用目录 `/etc/luci-uploads/chfs`，不再列出或删除其他应用的上传文件。
+- **开机自启未生效**：新增 postinst 与 uci-defaults 的 `init.d enable`，状态页改为同时检查 rc.d 链接与 UCI 开关。
+- **WebDAV 探测依赖缺失**：增加 `+curl` 依赖；探测优先使用运行中的 ini 端口与协议。
+- **端口监听探测**：改用 `/proc/net/tcp{,6}`，移除对 `netstat` 的依赖；删除会自匹配的 `pgrep` 状态函数。
+- **Release 资产路径错位**：发布资产改为平铺，`SHA256SUMS` / `manifest.json` 只记录 basename；README、docs 与自动发布说明同步更新。
+- **内核补发校验和失效**：`release.yml` 补发后重新扫描全部 Release 资产并重建 `SHA256SUMS` / `manifest.json`。
+- **工作流 boolean 开关无效**：修正 `publish_kernel` / `prune_assets` 的条件写法。
+- **上游下载无哈希**：未入库架构必须提供 `CHFS_UPSTREAM_SHA256` 才允许通过 HTTP 回退下载；`fetch-chfs.py` 对已入库架构强制校验 SHA256，并合并而非覆盖清单。
+- **备份无法清理**：新增 `kernel_backup_discard` 接口与备份删除按钮。
+- **文档与工具**：修正 UCI 参数表、Guest/admin 说明、Release 安装命令、目录树、`bin-manifest.txt` 重新生成命令；`.gitignore` 增加 `/tmp-dl/`。
+
+### 变更
+
+- 默认 `file_remove` 改为 `3`（永久删除），避免 OpenWrt 上没有系统回收站导致删除异常。
+- `bind_addr`、`webdav_show` 等未实现的配置项已移除。
+- 删除未使用的 `read_config` / `write_config` / `preview_ini` 接口与前端死代码。
+- 构建脚本改为不依赖 GNU `install -D` / `stat -c`，改善 macOS/BSD 构建兼容性。
+- `chfs` 包许可标记由 Apache-2.0 改为 `UNKNOWN`，等待上游明确许可。
+- CI 增加静态检查 job（Shell/Python/JS/JSON 语法）、并发取消与超时限制。
+
+## [1.0.0-r6] - 2026-11-12
 
 ### 变更
 
@@ -48,7 +84,7 @@
   ImmortalWrt SNAPSHOT 按 UTC 日期命中，避免长期复用每日变化的旧包。
 - **产物在构建 job 内即重命名**：apk 的文件名不含架构，三个架构 job 会产出同名
   `chfs-3.1-r1.apk`，不区分就无法在同一个 Release 中共存。
-- **Release 资产按架构分目录**：`x86_64/` `aarch64_cortex-a53/`
+- **Release 资产按架构分目录**（2026-11-24 起改为平铺）：`x86_64/` `aarch64_cortex-a53/`
   `aarch64_generic/` `all/`，根目录放内核二进制、`SHA256SUMS` 与 `manifest.json`。
 - **内核二进制并入主发布流程**：`build.yml` 发布时一并把
   `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1` 上传（可用 `publish_kernel` 关闭），

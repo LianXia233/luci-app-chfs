@@ -97,13 +97,40 @@ EXPECT_MACHINE = {"arm64": 183, "amd64": 62, "arm": 40, "386": 3,
                   "mips": 8, "mipsle": 8, "mips64": 8, "mips64le": 8,
                   "mipssoftfloat": 8, "mips64softfloat": 8}
 
+# 已发布上游包的 SHA256 基准值。上游不公布校验值，这里记录本仓库验证过的
+# 实际值；命中该表时必须完全一致，否则拒绝入库。
+EXPECT_SHA256 = {
+    "arm64": "78ed31c12b7f1c9679867d5cc9051cc1174740bb88b939eaf32b14436b6d3e53",
+    "amd64": "763a557c7b6916a496639a715cd8d6ff1dbb6c15b73bed060a705797d434c6a6",
+}
+
+
+def read_manifest(path):
+    """读取已有清单，保留未在本次下载的架构条目。"""
+    entries = {}
+    if not os.path.exists(path):
+        return entries
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 4:
+                entries[parts[0]] = parts[1:4]
+    return entries
+
 
 def main():
     archs = sys.argv[1:] or DEFAULT_ARCHS
     print("=== 下载并提取 chfs %s 二进制 ===" % VER)
     print("架构: %s" % ", ".join(archs))
-    manifest = []
+
+    mf = os.path.join(os.path.dirname(os.path.dirname(ROOT)), "chfs", "bin-manifest.txt")
+    entries = read_manifest(mf)
     ok = 0
+
     for arch in archs:
         print("[%s]" % arch)
         z = download(arch)
@@ -123,7 +150,18 @@ def main():
         mach = elf_machine(data)
         exp = EXPECT_MACHINE.get(arch)
         if exp is not None and mach != exp:
-            print("  警告: ELF e_machine=%s 与预期 %s 不符" % (mach, exp))
+            print("  错误: ELF e_machine=%s 与预期 %s 不符，拒绝入库" % (mach, exp))
+            continue
+
+        sha = hashlib.sha256(data).hexdigest()
+        expected_sha = EXPECT_SHA256.get(arch)
+        if expected_sha is not None and sha != expected_sha:
+            print("  错误: SHA256 与内置基准值不符，拒绝入库")
+            print("        期望: %s" % expected_sha)
+            print("        实际: %s" % sha)
+            continue
+        if expected_sha is None:
+            print("  警告: 该架构没有内置 SHA256 基准值，仅记录本次计算结果")
 
         outdir = os.path.join(ROOT, arch)
         os.makedirs(outdir, exist_ok=True)
@@ -131,23 +169,24 @@ def main():
         with open(out, "wb") as f:
             f.write(data)
         os.chmod(out, 0o755)
-        sha = hashlib.sha256(data).hexdigest()
-        manifest.append((arch, name, len(data), sha))
+
+        entries[arch] = (name, str(len(data)), sha)
         print("  <- %-32s %9d B  e_machine=%-3s sha256=%s"
               % (name, len(data), mach, sha[:16]))
         ok += 1
 
     print("\n成功 %d/%d" % (ok, len(archs)))
 
-    if manifest:
-        mf = os.path.join(os.path.dirname(os.path.dirname(ROOT)), "chfs", "bin-manifest.txt")
+    if entries:
+        os.makedirs(os.path.dirname(mf), exist_ok=True)
         with open(mf, "w", encoding="utf-8", newline="\n") as f:
             f.write("# chfs %s prebuilt binaries\n" % VER)
             f.write("# upstream: %s\n" % BASE)
-            f.write("# 说明: 已入库架构供云编译直接使用, 缺失架构由 Makefile 回退上游下载\n")
+            f.write("# 说明: 已入库架构供云编译直接使用, 缺失架构需显式提供上游 SHA256\n")
             f.write("# arch\toriginal_name\tsize\tsha256\n")
-            for a, n, s, h in manifest:
-                f.write("%s\t%s\t%d\t%s\n" % (a, n, s, h))
+            for arch in sorted(entries):
+                name, size, sha = entries[arch]
+                f.write("%s\t%s\t%s\t%s\n" % (arch, name, size, sha))
         print("清单: %s" % mf)
 
 

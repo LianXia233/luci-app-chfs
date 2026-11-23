@@ -318,9 +318,12 @@ def build_notes(tag, packages, kernels, extra_files):
     lines.append("")
     lines.append("chfs（CuteHttpFileServer）文件共享服务本体及其 LuCI 管理界面的预编译安装包。")
     lines.append("")
-    lines.append("### 资产目录结构")
+    lines.append("### 资产说明")
     lines.append("")
-    lines.append("| 目录 | 适用设备 | 包含 |")
+    lines.append("所有安装包与内核二进制都位于 Release 根目录，文件名已包含架构后缀；")
+    lines.append("GitHub Release 不支持资产子目录，请直接按文件名下载。")
+    lines.append("")
+    lines.append("| 架构 | 适用设备 | 包含 |")
     lines.append("|---|---|---|")
 
     arch_desc = {
@@ -329,48 +332,46 @@ def build_notes(tag, packages, kernels, extra_files):
         "aarch64_generic": "通用 ARMv8（armsr/armv8、RK35xx 等）",
         "all": "架构无关，任意设备通用",
     }
-    by_dir = {}
+    by_arch = {}
     for p in packages:
-        by_dir.setdefault(p["arch"], []).append(p)
-    for arch in sorted(by_dir, key=lambda a: (a == "all", a)):
-        files = "<br>".join("`%s`" % os.path.basename(p["file"]) for p in by_dir[arch])
-        lines.append("| `%s/` | %s | %s |" % (arch, arch_desc.get(arch, ""), files))
-    lines.append("| （根目录） | — | 内核二进制 `chfs-linux-arm64-3.1` / `chfs-linux-amd64-3.1`、"
-                 "`SHA256SUMS`、`manifest.json` |")
+        by_arch.setdefault(p["arch"], []).append(p)
+    for arch in sorted(by_arch, key=lambda a: (a == "all", a)):
+        files = "<br>".join("`%s`" % os.path.basename(p["file"]) for p in by_arch[arch])
+        lines.append("| `%s` | %s | %s |" % (arch, arch_desc.get(arch, ""), files))
     lines.append("")
     lines.append("`apk` 由 ImmortalWrt SNAPSHOT SDK 产出，`ipk` 由 OpenWrt 24.10.5 SDK 产出；")
-    lines.append("`all/` 下的 LuCI 界面与简体中文语言包与 CPU 无关，两种格式各只有一份。")
+    lines.append("LuCI 界面与简体中文语言包的架构为 `all`，两种格式各只有一份。")
     lines.append("")
 
     lines.append("### 包清单")
     lines.append("")
-    lines.append("| 路径 | 包 | 版本 | 格式 | 大小 |")
+    lines.append("| 文件 | 包 | 版本 | 格式 | 大小 |")
     lines.append("|---|---|---|---|---|")
     for p in sorted(packages, key=lambda p: (p["arch"] == "all", p["arch"], p["format"], p["name"])):
         lines.append("| `%s` | `%s` | %s | %s | %d |" % (
-            p["file"], p["name"], p["version"], p["format"], p["size"]))
+            os.path.basename(p["file"]), p["name"], p["version"], p["format"], p["size"]))
     lines.append("")
 
     lines.append("### 安装")
     lines.append("")
-    lines.append("先按设备架构与包管理器进入对应目录取包（下面以 `x86_64/` 为例）：")
+    lines.append("从 Release 根目录下载对应文件后，按包管理器安装（下面以 `x86_64` 为例）：")
     lines.append("")
     lines.append("```sh")
     lines.append("# apk 系统（ImmortalWrt / OpenWrt SNAPSHOT）")
     for p in packages:
         if p["format"] == "apk" and p["arch"] == "x86_64":
-            lines.append("apk add --allow-untrusted ./%s" % p["file"])
+            lines.append("apk add --allow-untrusted ./%s" % os.path.basename(p["file"]))
     for p in packages:
         if p["format"] == "apk" and p["arch"] == "all":
-            lines.append("apk add --allow-untrusted ./%s" % p["file"])
+            lines.append("apk add --allow-untrusted ./%s" % os.path.basename(p["file"]))
     lines.append("")
     lines.append("# ipk 系统（OpenWrt 24.10.x）")
     for p in packages:
         if p["format"] == "ipk" and p["arch"] == "x86_64":
-            lines.append("opkg install ./%s" % p["file"])
+            lines.append("opkg install ./%s" % os.path.basename(p["file"]))
     for p in packages:
         if p["format"] == "ipk" and p["arch"] == "all":
-            lines.append("opkg install ./%s" % p["file"])
+            lines.append("opkg install ./%s" % os.path.basename(p["file"]))
     lines.append("")
     lines.append("rm -f /tmp/luci-indexcache*; rm -rf /tmp/luci-modulecache/")
     lines.append("/etc/init.d/rpcd reload")
@@ -412,20 +413,16 @@ def cmd_finalize(args):
     for path in iter_packages(src):
         name, version, arch = read_meta(path)
         package_format = "apk" if path.endswith(".apk") else "ipk"
-        # 与 stage 保持同一口径：LuCI 界面/语言包恒归 all/，
-        # 否则 apk 侧会被 aarch64_generic 独占，其他架构取不到界面。
+        # 与 stage 保持同一口径：LuCI 界面/语言包恒归 all。
         arch = normalize_arch(name, arch)
         if arch in ("unknown", ""):
             log("::warning::无法判定 %s 的架构，按文件名保留" % os.path.basename(path))
             arch = "unknown"
         final = canonical_name(name, version, arch, package_format)
-        # 按架构分目录：Release 页会呈现为 x86_64/ aarch64_cortex-a53/
-        # aarch64_generic/ all/ 四个分组，避免六个架构的包平铺混在一起
-        subdir = arch or "unknown"
-        target_dir = os.path.join(out, subdir)
-        os.makedirs(target_dir, exist_ok=True)
-        target = os.path.join(target_dir, final)
-        rel = "%s/%s" % (subdir, final)
+        # GitHub Release 资产名只保留 basename，目录不会保留。
+        # 因此这里直接平铺到 out/，与 Release 页面和 SHA256SUMS 的路径口径一致。
+        target = os.path.join(out, final)
+        rel = final
         if os.path.exists(target):
             if sha256_of(target) != sha256_of(path):
                 log("::error::同名资产内容不一致: %s" % rel)
@@ -457,28 +454,34 @@ def cmd_finalize(args):
             continue
         if fn.endswith((".apk", ".ipk", ".json")):
             continue
+        path = os.path.join(out, fn)
+        if not os.path.isfile(path):
+            continue
         arch = "aarch64" if "arm64" in fn else ("x86_64" if "amd64" in fn else "unknown")
         kernels.append({
             "file": fn,
             "arch": arch,
-            "size": os.path.getsize(os.path.join(out, fn)),
-            "sha256": sha256_of(os.path.join(out, fn)),
+            "size": os.path.getsize(path),
+            "sha256": sha256_of(path),
         })
 
-    # SHA256SUMS：递归覆盖 out 下当时已有的全部资产（含架构子目录）
-    entries = []
+    # SHA256SUMS：全部使用 basename, 与 GitHub Release 的平铺资产一致
+    entries = {}
     for dirpath, _dirnames, filenames in os.walk(out):
         for fn in sorted(filenames):
-            rel = os.path.relpath(os.path.join(dirpath, fn), out).replace(os.sep, "/")
-            if rel in ("SHA256SUMS", "manifest.json"):
+            if fn in ("SHA256SUMS", "manifest.json"):
                 continue
-            entries.append((rel, sha256_of(os.path.join(out, rel))))
-    entries.sort()
+            path = os.path.join(dirpath, fn)
+            digest = sha256_of(path)
+            if fn in entries and entries[fn] != digest:
+                log("::error::不同目录下存在同名但内容不同的资产: %s" % fn)
+                return 1
+            entries[fn] = digest
     with open(os.path.join(out, "SHA256SUMS"), "w", encoding="utf-8", newline="\n") as f:
         f.write("# SHA256SUMS - luci-app-chfs %s\n" % args.tag)
         f.write("# 用法: sha256sum -c SHA256SUMS\n")
-        for fn, digest in entries:
-            f.write("%s  %s\n" % (digest, fn))
+        for fn in sorted(entries):
+            f.write("%s  %s\n" % (entries[fn], fn))
 
     manifest = {
         "repo": "LianXia233/luci-app-chfs",
@@ -508,6 +511,90 @@ def cmd_finalize(args):
     return 0
 
 
+def cmd_refresh(args):
+    """重新生成已有 Release 资产的 SHA256SUMS、manifest 与说明。
+
+    用于 release.yml 补发内核：上传新内核后，旧的 SHA256SUMS/manifest 会失效。
+    本命令不复制、不重命名文件，只扫描平铺目录并重建元数据。
+    """
+    d = args.dir
+    if not os.path.isdir(d):
+        log("::error::资产目录不存在: %s" % d)
+        return 2
+
+    packages = []
+    kernels = []
+
+    for fn in sorted(os.listdir(d)):
+        path = os.path.join(d, fn)
+        if not os.path.isfile(path):
+            continue
+        if fn in ("SHA256SUMS", "manifest.json"):
+            continue
+
+        if fn.endswith(".apk") or fn.endswith(".ipk"):
+            try:
+                name, version, arch = read_meta(path)
+            except ValueError as exc:
+                log("::warning::无法识别包元数据，跳过 %s (%s)" % (fn, exc))
+                continue
+            arch = normalize_arch(name, arch)
+            packages.append({
+                "name": name,
+                "version": version,
+                "arch": arch,
+                "format": "apk" if fn.endswith(".apk") else "ipk",
+                "file": fn,
+                "size": os.path.getsize(path),
+                "sha256": sha256_of(path),
+            })
+        elif fn.startswith("chfs-linux-"):
+            arch = "aarch64" if "arm64" in fn else ("x86_64" if "amd64" in fn else "unknown")
+            kernels.append({
+                "file": fn,
+                "arch": arch,
+                "size": os.path.getsize(path),
+                "sha256": sha256_of(path),
+            })
+
+    if not packages and not kernels:
+        log("::error::资产目录中没有可识别的包或内核")
+        return 1
+
+    entries = {}
+    for fn in sorted(os.listdir(d)):
+        path = os.path.join(d, fn)
+        if not os.path.isfile(path) or fn in ("SHA256SUMS", "manifest.json"):
+            continue
+        entries[fn] = sha256_of(path)
+
+    with open(os.path.join(d, "SHA256SUMS"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("# SHA256SUMS - luci-app-chfs %s\n" % args.tag)
+        f.write("# 用法: sha256sum -c SHA256SUMS\n")
+        for fn in sorted(entries):
+            f.write("%s  %s\n" % (entries[fn], fn))
+
+    manifest = {
+        "repo": "LianXia233/luci-app-chfs",
+        "tag": args.tag,
+        "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "formats": {fmt: FORMAT_DIST.get(fmt, fmt) for fmt in sorted({p["format"] for p in packages})},
+        "packages": sorted(packages, key=lambda p: (p["format"], p["arch"], p["name"])),
+        "kernels": kernels,
+    }
+    with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+    notes = build_notes(args.tag, packages, kernels, ["SHA256SUMS", "manifest.json"])
+    os.makedirs(os.path.dirname(os.path.abspath(args.notes)), exist_ok=True)
+    with open(args.notes, "w", encoding="utf-8", newline="\n") as f:
+        f.write(notes)
+
+    log("刷新完成: %d 个包, %d 个内核, %d 个校验项" % (len(packages), len(kernels), len(entries)))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="整理 chfs 构建产物")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -529,6 +616,12 @@ def main(argv=None):
     p_fin.add_argument("--notes", required=True, help="发布说明 markdown 输出路径")
     p_fin.add_argument("--tag", required=True, help="Release tag，用于生成下载链接")
     p_fin.set_defaults(func=cmd_finalize)
+
+    p_ref = sub.add_parser("refresh", help="重建已有平铺资产的 SHA256SUMS/manifest/说明")
+    p_ref.add_argument("--dir", required=True, help="已平铺的 Release 资产目录")
+    p_ref.add_argument("--notes", required=True, help="发布说明 markdown 输出路径")
+    p_ref.add_argument("--tag", required=True, help="Release tag")
+    p_ref.set_defaults(func=cmd_refresh)
 
     args = parser.parse_args(argv)
     return args.func(args)

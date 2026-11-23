@@ -42,7 +42,7 @@ on:
         required: false
         default: ''
       publish_kernel:
-        description: '同时发布 chfs 内核二进制（设备端一键下载源依赖它）'
+        description: '同时发布 chfs 内核二进制（关闭后发布清理会移除该 Tag 下旧内核资产）'
         required: false
         type: boolean
         default: true
@@ -55,15 +55,46 @@ on:
 permissions:
   contents: write
 
+# 同一分支的重复触发只保留最新一次, 避免并发写同一个 Release
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # luci 上游：提供 luci.mk 与 luci-base host 工具 (po2lmo / jsmin) 的源码
   LUCI_REPO: openwrt/luci
   LUCI_REF: master
 
 jobs:
+  lint:
+    name: 静态检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v7
+
+      - name: Shell / Python / JS / JSON 语法检查
+        run: |
+          set -e
+          sh -n luci-app-chfs/root/etc/init.d/chfs
+          sh -n luci-app-chfs/root/etc/uci-defaults/99-luci-app-chfs
+          sh -n chfs/extract-bin.sh
+
+          python3 -m py_compile tools/fetch-chfs.py tools/package-release.py
+
+          for f in luci-app-chfs/htdocs/luci-static/resources/view/chfs/*.js; do
+            node --check "$f"
+          done
+
+          python3 -m json.tool luci-app-chfs/root/usr/share/luci/menu.d/luci-app-chfs.json >/dev/null
+          python3 -m json.tool luci-app-chfs/root/usr/share/rpcd/acl.d/luci-app-chfs.json >/dev/null
+
   build:
     name: ${{ matrix.format }} / ${{ matrix.arch }} / ${{ matrix.sdk_name }}
+    needs: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -433,6 +464,7 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -454,7 +486,7 @@ jobs:
           find artifacts -type f | sort
 
       - name: 准备内核二进制
-        if: inputs.publish_kernel != 'false'
+        if: github.event_name != 'workflow_dispatch' || inputs.publish_kernel
         run: |
           set -e
           mkdir -p release
@@ -491,15 +523,29 @@ jobs:
           echo "--- 待发布资产 ---"
           ls -la release/
 
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          name: ${{ inputs.release_tag || github.ref_name }}
+          body_path: notes/release-notes.md
+          files: release/**
+          overwrite_files: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 先上传新资产, 再清理旧资产, 避免上传失败时把 Release 清空
       - name: 清理旧资产
-        if: inputs.prune_assets != 'false'
+        if: github.event_name != 'workflow_dispatch' || inputs.prune_assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           TAG="${{ inputs.release_tag || github.ref_name }}"
 
-          # 本次产出的资产名集合（白名单，含架构目录前缀，如 x86_64/chfs-3.1-r1_x86_64.apk）
+          # 本次产出的资产名集合（平铺文件名，无目录前缀）
           (cd release && find . -type f -printf '%P\n') | sort > expected.txt
 
           # 该 tag 下已存在的资产
@@ -519,16 +565,3 @@ jobs:
           done < existing.txt
 
           echo "共清理 $deleted 个旧资产"
-
-      - name: 创建 Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.release_tag || github.ref_name }}
-          name: ${{ inputs.release_tag || github.ref_name }}
-          body_path: notes/release-notes.md
-          files: release/**
-          overwrite_files: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
